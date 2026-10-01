@@ -22,6 +22,8 @@ let movimientos = [];
 let tipoActual = 'ingreso';
 let categoriaActual = 'comida';
 let filtroActual = 'todos';
+let mesActual = 'todos';
+let editandoId = null;   // id del movimiento que se está modificando
 
 /* ---------- DOM ---------- */
 const $ = (id) => document.getElementById(id);
@@ -89,8 +91,35 @@ function horaLegible(m) {
 }
 
 const sumar = (lista) => lista.reduce((s, m) => s + m.cantidad, 0);
-const soloIngresos = () => movimientos.filter((m) => m.tipo === 'ingreso');
-const soloGastos = () => movimientos.filter((m) => m.tipo === 'gasto');
+
+/* ---------- Filtro por mes ----------
+   Un solo sitio decide qué movimientos cuentan. Totales, gráfica,
+   historial y exportaciones parten todos de aquí, para que nunca
+   enseñen cosas distintas. */
+
+const mesDe = (m) => (m.fecha || '').slice(0, 7);   // "2026-09"
+
+function enMes(lista) {
+  return mesActual === 'todos' ? lista : lista.filter((m) => mesDe(m) === mesActual);
+}
+
+const visibles = () => enMes(movimientos);
+const soloIngresos = () => visibles().filter((m) => m.tipo === 'ingreso');
+const soloGastos = () => visibles().filter((m) => m.tipo === 'gasto');
+
+// "2026-09" -> "septiembre de 2026"
+function nombreMes(clave) {
+  const [a, m] = clave.split('-').map(Number);
+  return new Date(a, m - 1, 1).toLocaleDateString('es-MX', {
+    month: 'long', year: 'numeric',
+  });
+}
+
+// Con mayúscula inicial: para el desplegable y los títulos sueltos.
+const mesTitulo = (clave) => {
+  const t = nombreMes(clave);
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
 
 /* ---------- Tema claro / oscuro ----------
    Mientras el usuario no elija, manda el ajuste del sistema; en
@@ -229,7 +258,18 @@ async function abrirSesion(sesion) {
   $('pantallaAcceso').hidden = true;
   $('app').hidden = false;
 
-  $('chipUsuario').textContent = '👤 ' + sesion.correo;
+  // En pantallas chicas solo se enseña la parte de antes de la arroba;
+  // el correo completo queda en el título, al pasar por encima.
+  const chip = $('chipUsuario');
+  const [local, dominio] = sesion.correo.split('@');
+  chip.textContent = '';
+  chip.title = sesion.correo;
+  const parteLocal = document.createElement('span');
+  parteLocal.textContent = '👤 ' + local;
+  const parteDominio = document.createElement('span');
+  parteDominio.className = 'chip-dominio';
+  parteDominio.textContent = dominio ? '@' + dominio : '';
+  chip.append(parteLocal, parteDominio);
   ['chipUsuario', 'btnExcel', 'btnCSV', 'btnSalir'].forEach((id) => { $(id).hidden = false; });
 
   prepararApp();
@@ -279,6 +319,13 @@ function prepararApp() {
     });
   });
 
+  $('selectorMes').addEventListener('change', (e) => {
+    mesActual = e.target.value;
+    pintar();
+  });
+
+  $('btnCancelarEdicion').addEventListener('click', cancelarEdicion);
+
   formulario.addEventListener('submit', alGuardar);
   $('btnTabla').addEventListener('click', alternarTabla);
   $('btnExcel').addEventListener('click', exportarExcel);
@@ -298,11 +345,7 @@ function construirFichas() {
 
     ficha.addEventListener('click', () => {
       categoriaActual = c.id;
-      contFichas.querySelectorAll('.ficha').forEach((f) => {
-        const activa = f === ficha;
-        f.classList.toggle('activa', activa);
-        f.setAttribute('aria-pressed', String(activa));
-      });
+      marcarFicha(c.id);
     });
 
     contFichas.appendChild(ficha);
@@ -325,22 +368,32 @@ function cambiarTipo(tipo) {
   $('tituloNombre').textContent = esGasto ? 'Nombre del gasto' : 'Concepto';
   inpNombre.placeholder = esGasto ? 'Ej. Recibo de luz' : 'Ej. Venta del día';
 
-  botonGuardar.textContent = esGasto ? 'Registrar salida' : 'Registrar entrada';
+  // Durante una edición el botón conserva su texto aunque se cambie
+  // de entrada a salida: lo que se hace sigue siendo guardar cambios.
+  botonGuardar.textContent = editandoId
+    ? 'Guardar cambios'
+    : (esGasto ? 'Registrar salida' : 'Registrar entrada');
   botonGuardar.classList.toggle('salida', esGasto);
 }
 
-/* ---------- Alta ---------- */
+/* ---------- Alta y modificación ---------- */
 async function alGuardar(e) {
   e.preventDefault();
 
   const cantidad = parseFloat(inpCantidad.value);
   if (!cantidad || cantidad <= 0) return;
 
+  const original = editandoId
+    ? movimientos.find((m) => String(m.id) === String(editandoId))
+    : null;
+
   const mov = {
     tipo: tipoActual,
     cantidad: cantidad,
     fecha: inpFecha.value,
-    registrado: new Date().toISOString(),
+    // Al modificar se conserva la hora de captura original: es cuándo
+    // ocurrió el movimiento, no cuándo se corrigió el dato.
+    registrado: (original && original.registrado) || new Date().toISOString(),
     nombre: inpNombre.value.trim(),
   };
 
@@ -357,20 +410,87 @@ async function alGuardar(e) {
     mov.nombre = 'Entrada';
   }
 
-  // Se limpia el formulario de inmediato: la escritura puede tardar
-  // si hay red de por medio, y no conviene dejarlo bloqueado.
+  const idEditado = editandoId;
+  const respaldo = movimientos;
+
+  limpiarFormulario();
+  if (idEditado) terminarEdicion();
+
+  try {
+    if (idEditado) {
+      const guardado = await almacen.actualizar(idEditado, mov);
+      movimientos = movimientos.map((m) =>
+        String(m.id) === String(idEditado) ? guardado : m);
+    } else {
+      movimientos = [await almacen.agregar(mov), ...movimientos];
+    }
+    pintar();
+  } catch (error) {
+    movimientos = respaldo;
+    pintar();
+    alert('No se pudo guardar el movimiento: ' + error.message);
+  }
+}
+
+// Deja el formulario listo para capturar, conservando la fecha elegida.
+function limpiarFormulario() {
   const fecha = inpFecha.value;
   formulario.reset();
   inpFecha.value = fecha;
   inpCantidad.focus();
+}
 
-  try {
-    const guardado = await almacen.agregar(mov);
-    movimientos.unshift(guardado);
-    pintar();
-  } catch (error) {
-    alert('No se pudo guardar el movimiento: ' + error.message);
+/* ---------- Edición ---------- */
+function editar(id) {
+  const mov = movimientos.find((m) => String(m.id) === String(id));
+  if (!mov) return;
+
+  editandoId = id;
+  cambiarTipo(mov.tipo);
+
+  inpCantidad.value = mov.cantidad;
+  inpNombre.value = nombreDe(mov);
+  inpFecha.value = mov.fecha;
+
+  if (mov.tipo === 'gasto') {
+    categoriaActual = mov.categoria || 'otros';
+    marcarFicha(categoriaActual);
+    inpMotivo.value = mov.motivo || '';
   }
+
+  $('nombreEditado').textContent = nombreDe(mov);
+  $('avisoEdicion').hidden = false;
+  botonGuardar.textContent = 'Guardar cambios';
+
+  // Se redibuja para que la fila en edición quede señalada.
+  pintarHistorial();
+
+  // En el móvil el formulario queda arriba, fuera de vista.
+  $('avisoEdicion').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  inpCantidad.focus();
+  inpCantidad.select();
+}
+
+function terminarEdicion() {
+  editandoId = null;
+  $('avisoEdicion').hidden = true;
+  cambiarTipo('ingreso');
+  marcarFicha('comida');
+  categoriaActual = 'comida';
+  pintarHistorial();   // quita la marca de la fila
+}
+
+function cancelarEdicion() {
+  terminarEdicion();
+  limpiarFormulario();
+}
+
+function marcarFicha(id) {
+  contFichas.querySelectorAll('.ficha').forEach((f) => {
+    const activa = f.dataset.id === id;
+    f.classList.toggle('activa', activa);
+    f.setAttribute('aria-pressed', String(activa));
+  });
 }
 
 async function eliminar(id) {
@@ -391,9 +511,36 @@ async function eliminar(id) {
 
 /* ---------- Pintado ---------- */
 function pintar() {
+  pintarSelectorMes();
   pintarTotales();
   pintarHistorial();
   pintarGrafica();
+}
+
+/* El desplegable solo ofrece meses que tienen movimientos: no tiene
+   sentido poder elegir un mes vacío. */
+function pintarSelectorMes() {
+  const selector = $('selectorMes');
+  const meses = [...new Set(movimientos.map(mesDe).filter(Boolean))].sort().reverse();
+
+  // Si el mes elegido se quedó sin movimientos, se vuelve a "todos".
+  if (mesActual !== 'todos' && !meses.includes(mesActual)) mesActual = 'todos';
+
+  selector.innerHTML = '';
+  const todos = document.createElement('option');
+  todos.value = 'todos';
+  todos.textContent = 'Todos los meses';
+  selector.appendChild(todos);
+
+  meses.forEach((clave) => {
+    const op = document.createElement('option');
+    op.value = clave;
+    op.textContent = mesTitulo(clave);
+    selector.appendChild(op);
+  });
+
+  selector.value = mesActual;
+  selector.hidden = meses.length < 2;   // con un solo mes no aporta nada
 }
 
 function pintarTotales() {
@@ -405,6 +552,20 @@ function pintarTotales() {
   cifra.textContent = dinero(saldo);
   cifra.classList.toggle('negativo', saldo < 0);
 
+  // Con un mes elegido, la cifra grande es el balance de ese mes;
+  // el saldo de verdad se enseña aparte para no confundirlos.
+  const porMes = mesActual !== 'todos';
+  $('etiquetaCifra').textContent = porMes
+    ? 'Balance de ' + nombreMes(mesActual)
+    : 'Saldo disponible';
+
+  $('parSaldoTotal').hidden = !porMes;
+  if (porMes) {
+    const total = sumar(movimientos.filter((m) => m.tipo === 'ingreso')) -
+      sumar(movimientos.filter((m) => m.tipo === 'gasto'));
+    $('saldoGeneral').textContent = dinero(total);
+  }
+
   $('totalIngresos').textContent = dinero(ingresos);
   $('totalGastos').textContent = dinero(gastos);
 }
@@ -413,15 +574,18 @@ function pintarHistorial() {
   const cont = $('historial');
   cont.innerHTML = '';
 
-  const visibles = movimientos
+  const enPantalla = visibles()
     .filter((m) => filtroActual === 'todos' || m.tipo === filtroActual)
     .sort((a, b) => b.fecha.localeCompare(a.fecha) || momentoDe(b) - momentoDe(a));
 
-  $('sinMovimientos').hidden = visibles.length > 0;
+  $('sinMovimientos').hidden = enPantalla.length > 0;
+  $('sinMovimientos').textContent = mesActual === 'todos'
+    ? 'Aún no registras movimientos.'
+    : 'No hay movimientos en ' + nombreMes(mesActual) + '.';
 
   // Agrupar por dia para que el historial se lea como una bitacora.
   const porDia = new Map();
-  visibles.forEach((m) => {
+  enPantalla.forEach((m) => {
     if (!porDia.has(m.fecha)) porDia.set(m.fecha, []);
     porDia.get(m.fecha).push(m);
   });
@@ -481,15 +645,33 @@ function filaMovimiento(m) {
   monto.className = 'mov-monto';
   monto.textContent = (esGasto ? '−' : '+') + dinero(m.cantidad);
 
+  const acciones = document.createElement('div');
+  acciones.className = 'mov-acciones';
+
+  const modificar = document.createElement('button');
+  modificar.className = 'mov-accion';
+  modificar.type = 'button';
+  modificar.textContent = '✏️';
+  modificar.title = 'Editar movimiento';
+  modificar.setAttribute('aria-label', 'Editar ' + nombreDe(m));
+  modificar.addEventListener('click', () => editar(m.id));
+
   const quitar = document.createElement('button');
-  quitar.className = 'mov-quitar';
+  quitar.className = 'mov-accion mov-quitar';
   quitar.type = 'button';
-  quitar.textContent = '×';
+  quitar.textContent = '🗑️';
   quitar.title = 'Eliminar movimiento';
   quitar.setAttribute('aria-label', 'Eliminar ' + nombreDe(m));
-  quitar.addEventListener('click', () => eliminar(m.id));
+  quitar.addEventListener('click', () => {
+    if (confirm('¿Eliminar "' + nombreDe(m) + '" por ' + dinero(m.cantidad) + '?')) {
+      eliminar(m.id);
+    }
+  });
 
-  fila.append(marca, cuerpo, monto, quitar);
+  acciones.append(modificar, quitar);
+  fila.append(marca, cuerpo, monto, acciones);
+
+  if (String(m.id) === String(editandoId)) fila.classList.add('en-edicion');
 
   // El motivo va en su propio renglon a lo ancho, para que no quede
   // exprimido en una columna angosta cuando la pantalla es chica.
@@ -621,8 +803,14 @@ function alternarTabla() {
 const FMT_MONEDA = '"$"#,##0.00_);[Red]("$"#,##0.00)';
 const FMT_PCT = '0.0%';
 
+// El nombre del archivo dice qué contiene: todo, o un mes concreto.
 const nombreArchivo = (ext) =>
-  'control_dinero_' + new Date().toISOString().slice(0, 10) + '.' + ext;
+  'control_dinero_' +
+  (mesActual === 'todos' ? new Date().toISOString().slice(0, 10) : mesActual) +
+  '.' + ext;
+
+const periodoTexto = () =>
+  mesActual === 'todos' ? 'Todos los meses' : mesTitulo(mesActual);
 
 function formatearColumna(hoja, letra, formato) {
   const rango = XLSX.utils.decode_range(hoja['!ref']);
@@ -633,7 +821,7 @@ function formatearColumna(hoja, letra, formato) {
 }
 
 function exportarExcel() {
-  if (!movimientos.length) {
+  if (!visibles().length) {
     alert('No hay movimientos para exportar.');
     return;
   }
@@ -654,6 +842,7 @@ function exportarExcel() {
   /* Hoja 1: Resumen */
   const resumen = XLSX.utils.aoa_to_sheet([
     ['Resumen de ingresos y gastos'],
+    ['Periodo', periodoTexto()],
     ['Generado el', fechaLegible(new Date().toISOString().slice(0, 10))],
     [],
     ['Concepto', 'Monto'],
@@ -661,10 +850,10 @@ function exportarExcel() {
     ['Total de salidas', gastos],
     ['Saldo disponible', ingresos - gastos],
     [],
-    ['Movimientos registrados', movimientos.length],
+    ['Movimientos registrados', visibles().length],
   ]);
   resumen['!cols'] = [{ wch: 26 }, { wch: 16 }];
-  ['B5', 'B6', 'B7'].forEach((r) => { if (resumen[r]) resumen[r].z = FMT_MONEDA; });
+  ['B6', 'B7', 'B8'].forEach((r) => { if (resumen[r]) resumen[r].z = FMT_MONEDA; });
   XLSX.utils.book_append_sheet(libro, resumen, 'Resumen');
 
   /* Hoja 2: Movimientos con detalle */
@@ -674,7 +863,7 @@ function exportarExcel() {
   ]];
 
   let saldo = 0;
-  movimientos
+  visibles()
     .slice()
     .sort((a, b) => a.fecha.localeCompare(b.fecha) || momentoDe(a) - momentoDe(b))
     .forEach((m, i) => {
@@ -723,7 +912,7 @@ function exportarExcel() {
 }
 
 function exportarCSV() {
-  if (!movimientos.length) {
+  if (!visibles().length) {
     alert('No hay movimientos para exportar.');
     return;
   }
@@ -733,7 +922,7 @@ function exportarCSV() {
     'Nombre', 'Motivo de la salida', 'Cantidad',
   ]];
 
-  movimientos
+  visibles()
     .slice()
     .sort((a, b) => a.fecha.localeCompare(b.fecha) || momentoDe(a) - momentoDe(b))
     .forEach((m) => {

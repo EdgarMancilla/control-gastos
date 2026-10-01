@@ -363,7 +363,8 @@ button { font: inherit; cursor: pointer; }
 .chip-usuario {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  /* Sin hueco: el nombre y el dominio forman un solo correo. */
+  gap: 0;
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
   background: var(--superficie-2);
@@ -405,7 +406,26 @@ button { font: inherit; cursor: pointer; }
   font-size: 0.92rem;
 }
 
+/* La cifra y el selector de mes comparten renglón mientras quepan. */
+.cabecera-fila {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--hueco);
+}
+
+.selector-mes select {
+  width: auto;
+  min-width: 11rem;
+  max-width: 100%;
+  background: var(--superficie);
+  font-weight: 600;
+  padding: 0.55rem 0.8rem;
+}
+
 .par { display: inline-flex; align-items: center; gap: 0.45rem; }
+.par-saldo { color: var(--tinta-3); }
 .par strong { font-variant-numeric: tabular-nums; color: var(--tinta); font-weight: 600; }
 
 .par-punto { width: 8px; height: 8px; border-radius: 50%; }
@@ -439,6 +459,22 @@ button { font: inherit; cursor: pointer; }
   gap: var(--respiro);
   align-items: start;
 }
+
+/* ---------- Aviso de edición ---------- */
+.aviso-edicion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: var(--hueco);
+  padding: 0.55rem 0.5rem 0.55rem 0.85rem;
+  border-radius: var(--radio-chico);
+  background: color-mix(in srgb, var(--acento) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acento) 35%, transparent);
+  font-size: 0.86rem;
+}
+.aviso-edicion strong { overflow-wrap: anywhere; }
 
 /* ---------- Segmento Entrada / Salida ---------- */
 .segmento {
@@ -565,6 +601,9 @@ textarea { resize: vertical; }
 /* ---------- Fichas de seccion ---------- */
 .fichas { display: flex; flex-wrap: wrap; gap: 0.45rem; }
 
+/* Envoltorio para poder insinuar, en móvil, que la tira sigue. */
+.fichas-caja { position: relative; }
+
 .ficha {
   border: 1px solid var(--borde-fuerte);
   background: var(--superficie);
@@ -633,7 +672,12 @@ textarea { resize: vertical; }
 @keyframes crecer { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 /* ---------- Tabla (vista alterna de la grafica) ---------- */
-.tabla { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+
+/* Si la tabla no cabe, se desplaza ella sola: la página nunca
+   se mueve en horizontal. */
+.tabla-caja { overflow-x: auto; }
+
+.tabla { width: 100%; border-collapse: collapse; font-size: 0.88rem; min-width: 18rem; }
 .tabla th, .tabla td {
   text-align: right;
   padding: 0.5rem 0.4rem;
@@ -719,22 +763,42 @@ textarea { resize: vertical; }
 .movimiento.ingreso .mov-monto { color: var(--entra-texto); }
 .movimiento.gasto .mov-monto { color: var(--sale-texto); }
 
-.mov-quitar {
+.mov-acciones {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  opacity: 0;
+  transition: opacity .2s var(--curva);
+}
+
+.mov-accion {
   border: 0;
   background: transparent;
-  color: var(--tinta-3);
-  font-size: 1.1rem;
+  border-radius: 8px;
+  /* Área de toque cómoda en el móvil, sin agrandar el icono. */
+  min-width: 34px;
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
   line-height: 1;
-  padding: 0 0.15rem;
-  opacity: 0;
-  transition: opacity .2s var(--curva), color .2s var(--curva);
+  padding: 0;
+  transition: background .18s var(--curva);
 }
-.movimiento:hover .mov-quitar, .mov-quitar:focus-visible { opacity: 1; }
-.mov-quitar:hover { color: var(--sale-texto); }
+.mov-accion:hover { background: var(--superficie); }
 
-/* En pantallas tactiles no hay hover: el boton se queda visible. */
+.movimiento:hover .mov-acciones,
+.mov-acciones:focus-within { opacity: 1; }
+
+/* El movimiento que se está editando se queda señalado. */
+.movimiento.en-edicion {
+  background: color-mix(in srgb, var(--acento) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--acento);
+}
+
+/* Donde no hay cursor que pase por encima, los botones siempre se ven. */
 @media (hover: none) {
-  .mov-quitar { opacity: 1; }
+  .mov-acciones { opacity: 1; }
 }
 
 .nota-vacia {
@@ -743,6 +807,103 @@ textarea { resize: vertical; }
   text-align: center;
   color: var(--tinta-3);
   font-size: 0.9rem;
+}
+
+/* ==========================================================
+   Pantallas pequeñas
+   El grueso del diseño ya se adapta solo con clamp() y grids
+   que se reacomodan. Aquí van los ajustes que no se pueden
+   expresar de forma continua: qué texto se recorta, qué se
+   reordena y qué necesita más área de toque.
+   ========================================================== */
+
+/* Tablet y móvil */
+@media (max-width: 720px) {
+  /* Dedos, no cursores: todo lo pulsable con área cómoda. */
+  .boton-suave, .boton-texto, .filtro, .ficha, .seg-opcion {
+    min-height: 40px;
+  }
+
+  .mov-accion { min-width: 40px; min-height: 40px; font-size: 1rem; }
+
+  /* Por debajo de 16px, iOS hace zoom al tocar un campo. */
+  input, select, textarea { font-size: 16px; }
+}
+
+/* Móvil */
+@media (max-width: 560px) {
+  /* La marca ocupa el primer renglón y las acciones el segundo,
+     repartidas a lo ancho en vez de amontonadas. */
+  .barra { gap: 10px; padding-inline: var(--respiro); }
+  .barra-acciones {
+    width: 100%;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .solo-ancho { display: none; }          /* "Descargar Excel" -> "Excel" */
+
+  /* El correo completo no cabe: se queda la parte de antes de la arroba. */
+  .chip-dominio { display: none; }
+  .chip-usuario {
+    max-width: none;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .boton-suave, .boton-texto { padding-inline: 0.7rem; }
+
+  /* El selector de mes manda renglón propio y se ve completo. */
+  .cabecera-fila { flex-direction: column; align-items: stretch; }
+  .selector-mes select { width: 100%; min-width: 0; }
+
+  .cabecera { padding-top: clamp(0.5rem, 2vw, 1rem); }
+
+  /* Las fichas de sección en fila deslizable: no empujan el ancho
+     ni obligan a hacer la tarjeta altísima. */
+  .fichas {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+  .ficha { flex: 0 0 auto; scroll-snap-align: start; }
+
+  /* Degradado en el borde derecho: deja ver que la tira continúa. */
+  .fichas-caja::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 4px;
+    width: 2rem;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--superficie));
+  }
+
+  /* Con los botones en el primer renglón, al nombre le quedaban unos
+     90px y se partía en cuatro líneas. Bajan junto al motivo. */
+  .movimiento {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    row-gap: 0.25rem;
+  }
+  .mov-motivo { grid-column: 2; grid-row: 2; }
+  .mov-acciones { grid-column: 3; grid-row: 2; justify-self: end; }
+
+  /* La tabla alterna puede ser más ancha que la pantalla. */
+  .tabla { font-size: 0.82rem; }
+
+  .dia-cabeza { flex-wrap: wrap; }
+}
+
+/* Móviles estrechos */
+@media (max-width: 380px) {
+  .mov-marca { width: 30px; height: 30px; flex-basis: 30px; border-radius: 9px; }
+  .movimiento { column-gap: 0.5rem; padding-inline: 0.35rem; margin-inline: -0.35rem; }
+  .mov-monto { font-size: 0.9rem; }
+  .barra-nombre { font-size: 0.82rem; }
+  .barra-valor { font-size: 0.8rem; }
 }
 
 /* ---------- Accesibilidad de movimiento ---------- */

@@ -1,12 +1,66 @@
-# Control de gastos — cómo ponerlo en marcha
+# Control de gastos
 
-La aplicación funciona **ya mismo en modo local** (cuentas y movimientos guardados
-en tu navegador). Cuando completes los pasos de Firebase, pasa sola a guardar todo
-en la nube, sin tocar más código.
+**En línea:** https://edgarmancilla.github.io/control-gastos/
+
+Aplicación para llevar el control de entradas y salidas de dinero, con las salidas
+clasificadas por secciones y un motivo obligatorio en cada una.
+
+## Qué se puede hacer
+
+- **Registrar** entradas y salidas, con fecha, nombre y —en las salidas— sección y motivo.
+- **Editar** cualquier movimiento ya registrado: el botón ✏️ lo carga en el formulario.
+  Se puede incluso cambiar una salida a entrada; los datos que dejan de aplicar se van.
+- **Filtrar por mes**: el desplegable junto a la cifra principal afecta a todo a la vez
+  —el balance, las barras por sección, el historial y lo que se exporta a Excel o CSV.
+  Con un mes elegido, la cifra grande pasa a ser el balance de ese mes y el saldo
+  acumulado se enseña aparte, para no confundirlos.
+- **Exportar** a Excel (tres hojas: resumen, movimientos con detalle y salidas por
+  sección) o a CSV.
+- **Tema claro y oscuro**, que sigue al del sistema hasta que elijas uno.
+- Pensada también **para el móvil**: comprobada sin desbordes desde 320px de ancho.
+
+Las cuentas y los movimientos viven en **Firebase** (proyecto `control-gastos-769cb`),
+así que los datos están disponibles desde cualquier dispositivo y cada cuenta ve
+únicamente los suyos.
+
+## Estado de la configuración
+
+| | Paso | Estado |
+|---|---|---|
+| ✅ | Proyecto de Firebase creado | `control-gastos-769cb` |
+| ✅ | Authentication con correo y contraseña | Habilitado |
+| ✅ | Base de datos Firestore | Creada |
+| ✅ | Reglas de seguridad publicadas | Ver `firestore.rules` |
+| ✅ | Dominio autorizado | `edgarmancilla.github.io` |
+| ✅ | Publicado en GitHub Pages | Rama `main`, carpeta raíz |
+
+Lo que sigue en este archivo es la referencia de cómo se hizo, por si alguna vez hay
+que rehacerlo o mover el proyecto a otra cuenta.
 
 ---
 
-## 1. Verla funcionando ahora mismo
+## Trabajar en el código
+
+La página usa módulos de JavaScript, así que **no se puede abrir con doble clic**.
+Desde esta carpeta:
+
+```
+node servidor.js
+```
+
+Y abre http://localhost:3000. Para publicar los cambios:
+
+```
+git add .
+git commit -m "describe el cambio"
+git push
+```
+
+GitHub Pages se actualiza solo en un par de minutos.
+
+---
+
+## Referencia: ver la app en local
 
 Desde que la página usa módulos de JavaScript, **ya no se puede abrir con doble clic**
 en el archivo: los navegadores lo bloquean por seguridad. Hay que servirla. En la
@@ -23,7 +77,7 @@ Te dará una dirección tipo `http://localhost:3000`. Ábrela en el navegador.
 
 ---
 
-## 2. Crear el proyecto en Firebase
+## Referencia: cómo se configuró Firebase
 
 1. Entra a **console.firebase.google.com** con tu cuenta de Google.
 2. **Agregar proyecto** → ponle un nombre (por ejemplo `control-gastos`).
@@ -73,7 +127,7 @@ Te dará una dirección tipo `http://localhost:3000`. Ábrela en el navegador.
 
 ---
 
-## 3. Comprobar que quedó conectado
+## Referencia: comprobar que la conexión funciona
 
 Abre **`http://localhost:3000/diagnostico.html`**. Te dirá en cuatro líneas qué parte
 ya funciona y cuál falta:
@@ -89,7 +143,7 @@ ya funciona y cuál falta:
 Esa página no crea ni modifica nada: solo pregunta y reporta. Puedes borrarla cuando
 todo esté en orden.
 
-## 3b. Comprobarlo usando la app
+### Comprobarlo usando la app
 
 Recarga la página. Abajo del formulario de acceso, la etiqueta debe decir
 **«Conectado a Firebase»** en lugar de «Modo local».
@@ -103,39 +157,24 @@ usuarios / {identificador de tu cuenta} / movimientos / {el movimiento}
 
 ---
 
-## 4. Publicarla en internet (opcional)
+## Referencia: cómo está publicada
 
-Para entrar desde el celular o desde otra computadora, la página tiene que estar
-publicada. Lo más directo es usar el hospedaje del propio Firebase:
+Está en **GitHub Pages**, desde el repositorio `EdgarMancilla/control-gastos`:
+
+- **Settings → Pages → Source:** Deploy from a branch, rama `main`, carpeta `/ (root)`
+- El campo *Custom domain* queda **vacío** — es solo para dominios propios comprados
+
+Para que el inicio de sesión funcione desde ahí, el dominio está dado de alta en
+**Firebase → Authentication → Settings → Dominios autorizados**:
 
 ```
-npm install -g firebase-tools
-firebase login
-firebase init hosting     # carpeta pública: . (el punto)
-firebase deploy
+edgarmancilla.github.io
 ```
 
-Te dará una dirección `https://tu-proyecto.web.app`. Esa dirección ya queda
-autorizada para el inicio de sesión automáticamente.
+Va solo el dominio, sin `https://` y sin `/control-gastos`: Firebase compara el
+origen, y la ruta no forma parte de él.
 
-Si prefieres Netlify o Vercel, también funcionan; en ese caso agrega el dominio en
-**Authentication → Settings → Dominios autorizados**.
-
----
-
-## Pasar los datos que ya tienes
-
-Lo que esté guardado en el navegador **no se sube solo** a Firebase. Para pasarlo,
-abre **`http://localhost:3000/importar.html`**:
-
-1. Entra con la cuenta de Firebase donde quieres que queden los movimientos.
-2. La página busca todo lo guardado en este navegador y te lo muestra agrupado,
-   con cuántos movimientos tiene cada grupo.
-3. Marca los que quieras y pulsa **Subir a mi cuenta**.
-
-Importante: **úsala desde el mismo navegador y la misma computadora** donde capturaste
-los movimientos, porque es ahí donde están guardados. Si subes dos veces el mismo grupo
-quedarán duplicados; la página te avisa si detecta que ya importaste antes.
+Cada `git push` a `main` republica el sitio automáticamente, en un par de minutos.
 
 ---
 

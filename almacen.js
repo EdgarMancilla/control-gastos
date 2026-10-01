@@ -14,6 +14,7 @@
      recuperar(correo)         correo para restablecer contraseña
      listar()                  -> [movimientos]
      agregar(movimiento)       -> movimiento guardado (con su id)
+     actualizar(id, cambios)   -> movimiento ya modificado
      borrar(id)
 
    Las que pueden fallar devuelven { ok, mensaje }. */
@@ -136,6 +137,16 @@ async function crearAlmacenFirebase() {
       const { id, ...datos } = movimiento;
       const ref = await dbMod.addDoc(coleccion(), datos);
       return { ...datos, id: ref.id };
+    },
+
+    async actualizar(id, cambios) {
+      // El id no viaja dentro del documento: identifica, no es un dato.
+      const { id: _, ...datos } = cambios;
+      const referencia = dbMod.doc(db, 'usuarios', auth.currentUser.uid, 'movimientos', String(id));
+      // setDoc reemplaza el documento entero, para que al pasar de
+      // salida a entrada no queden colgando la categoria y el motivo.
+      await dbMod.setDoc(referencia, datos);
+      return { ...datos, id };
     },
 
     async borrar(id) {
@@ -310,6 +321,16 @@ function crearAlmacenLocal() {
       lista.push(guardado);
       escribirJSON(claveDatos(sesion.id), lista);
       return guardado;
+    },
+
+    async actualizar(id, cambios) {
+      const lista = await this.listar();
+      const actualizado = { ...cambios, id };
+      escribirJSON(
+        claveDatos(sesion.id),
+        lista.map((m) => (String(m.id) === String(id) ? actualizado : m))
+      );
+      return actualizado;
     },
 
     async borrar(id) {
