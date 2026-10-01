@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>Diagnóstico</title></head>
+<body>
+<pre id="R">probando…</pre>
+<script type="module">
+  import { configFirebase, VERSION_FIREBASE } from './firebase-config.js';
+  const linea = (t) => { document.getElementById('R').textContent += '\n' + t; };
+  document.getElementById('R').textContent = 'SDK ' + VERSION_FIREBASE;
+
+  try {
+    const base = 'https://www.gstatic.com/firebasejs/' + VERSION_FIREBASE + '/';
+    const [appMod, authMod, dbMod] = await Promise.all([
+      import(base + 'firebase-app.js'),
+      import(base + 'firebase-auth.js'),
+      import(base + 'firebase-firestore.js'),
+    ]);
+    linea('1. SDK cargado: OK');
+
+    const app = appMod.initializeApp(configFirebase);
+    const auth = authMod.getAuth(app);
+    linea('2. initializeApp: OK (' + app.options.projectId + ')');
+
+    // Intento de entrada con una cuenta que no existe: NO crea nada.
+    // El código de error dice si Correo/contraseña está activado.
+    try {
+      await authMod.signInWithEmailAndPassword(
+        auth, 'prueba.inexistente@ejemplo-no-usar.com', 'claveFalsa123');
+      linea('3. Authentication: respondió OK (inesperado)');
+    } catch (e) {
+      linea('3. Authentication responde: ' + e.code);
+    }
+
+    // Lectura sin sesión: debe ser rechazada si las reglas están bien.
+    try {
+      const db = dbMod.getFirestore(app);
+      await dbMod.getDocs(dbMod.collection(db, 'usuarios', 'alguien', 'movimientos'));
+      linea('4. Firestore: lectura SIN SESIÓN permitida  <-- reglas abiertas');
+    } catch (e) {
+      linea('4. Firestore responde: ' + (e.code || e.message));
+    }
+  } catch (e) {
+    linea('ERROR: ' + e.message);
+  }
+  document.title = 'listo';
+</script>
+</body>
+</html>

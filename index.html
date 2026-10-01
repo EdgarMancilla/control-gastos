@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flujo · Control de dinero</title>
+  <link rel="stylesheet" href="estilos.css">
+
+  <!-- Se aplica el tema guardado ANTES de pintar, para que no se vea
+       un destello claro al abrir la página en modo oscuro. -->
+  <script>
+    (function () {
+      try {
+        var guardado = localStorage.getItem('tema');
+        if (guardado === 'oscuro' || guardado === 'claro') {
+          document.documentElement.dataset.tema = guardado;
+        }
+      } catch (e) { /* si el navegador bloquea el almacenamiento, se usa el del sistema */ }
+    })();
+  </script>
+</head>
+
+<body>
+
+  <header class="barra">
+    <div class="marca">
+      <span class="marca-punto"></span>
+      <span>Control de gastos</span>
+    </div>
+    <div class="barra-acciones">
+      <button id="btnTema" class="boton-icono" type="button" aria-label="Cambiar a modo oscuro" title="Cambiar de tema">
+        <!-- Sol: visible en modo claro -->
+        <svg class="icono-sol" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"
+          fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4.2" />
+          <path d="M12 2.4v2.2M12 19.4v2.2M2.4 12h2.2M19.4 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6" />
+        </svg>
+        <!-- Luna: visible en modo oscuro -->
+        <svg class="icono-luna" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"
+          fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.5 14.4A8.6 8.6 0 1 1 9.6 3.5a6.9 6.9 0 0 0 10.9 10.9z" />
+        </svg>
+      </button>
+      <!-- Lo que sigue solo tiene sentido con la sesión iniciada -->
+      <span id="chipUsuario" class="chip-usuario" hidden></span>
+      <button id="btnExcel" class="boton-suave" type="button" hidden>Descargar Excel</button>
+      <button id="btnCSV" class="boton-texto" type="button" hidden>Descargar CSV</button>
+      <button id="btnSalir" class="boton-texto" type="button" hidden>Salir</button>
+    </div>
+  </header>
+
+  <!-- ===== Pantalla de acceso ===== -->
+  <section id="pantallaAcceso" class="acceso" hidden>
+    <div class="tarjeta acceso-tarjeta">
+      <h1 class="acceso-titulo">Control de gastos</h1>
+      <p class="acceso-bajada">Entra con tu cuenta para ver tus movimientos.</p>
+
+      <div class="segmento acceso-segmento">
+        <button class="seg-opcion activa" data-modo="entrar" type="button">Entrar</button>
+        <button class="seg-opcion" data-modo="crear" type="button">Crear cuenta</button>
+        <span class="seg-indicador" id="accIndicador"></span>
+      </div>
+
+      <form id="formAcceso" autocomplete="off">
+        <label class="campo">
+          <span class="campo-titulo">Correo</span>
+          <input type="email" id="accCorreo" name="correo" autocomplete="username"
+            placeholder="tucorreo@ejemplo.com" required>
+        </label>
+
+        <label class="campo">
+          <span class="campo-titulo">Contraseña</span>
+          <input type="password" id="accClave" name="clave" autocomplete="current-password"
+            placeholder="Tu contraseña" required>
+        </label>
+
+        <label class="campo" id="grupoConfirma" hidden>
+          <span class="campo-titulo">Repite la contraseña</span>
+          <input type="password" id="accConfirma" autocomplete="new-password"
+            placeholder="La misma contraseña">
+        </label>
+
+        <p id="accAviso" class="acceso-aviso" role="alert" hidden></p>
+
+        <button type="submit" class="boton-accion" id="btnAcceder">Entrar</button>
+      </form>
+
+      <button type="button" id="btnRecuperar" class="boton-texto acceso-olvide">
+        Olvidé mi contraseña
+      </button>
+
+      <p class="acceso-nota">
+        <span id="insigniaModo" class="insignia-modo">Modo local (este navegador)</span>
+      </p>
+    </div>
+  </section>
+
+  <main class="lienzo" id="app" hidden>
+
+    <!-- Cifra principal -->
+    <section class="cabecera">
+      <p class="cabecera-etiqueta">Saldo disponible</p>
+      <p class="cabecera-cifra" id="saldoTotal">$0.00</p>
+      <div class="cabecera-pares">
+        <span class="par par-entra">
+          <span class="par-punto"></span>
+          Entró <strong id="totalIngresos">$0.00</strong>
+        </span>
+        <span class="par par-sale">
+          <span class="par-punto"></span>
+          Salió <strong id="totalGastos">$0.00</strong>
+        </span>
+      </div>
+    </section>
+
+    <!-- Captura -->
+    <section class="tarjeta captura">
+      <div class="segmento" id="segmento">
+        <button class="seg-opcion activa" data-tipo="ingreso" type="button">Entrada</button>
+        <button class="seg-opcion" data-tipo="gasto" type="button">Salida</button>
+        <span class="seg-indicador" id="segIndicador"></span>
+      </div>
+
+      <form id="formulario" autocomplete="off">
+
+        <div class="linea-principal">
+          <label class="campo campo-monto">
+            <span class="campo-titulo">Cantidad</span>
+            <span class="monto-caja">
+              <span class="monto-signo">$</span>
+              <input type="number" id="cantidad" step="0.01" min="0.01" placeholder="0.00" required>
+            </span>
+          </label>
+
+          <label class="campo">
+            <span class="campo-titulo" id="tituloNombre">Concepto</span>
+            <input type="text" id="nombre" placeholder="Ej. Venta del día">
+          </label>
+
+          <label class="campo campo-fecha">
+            <span class="campo-titulo">Fecha</span>
+            <input type="date" id="fecha" required>
+          </label>
+        </div>
+
+        <!-- Bloque que solo aparece en salidas; se despliega con animación -->
+        <div class="desplegable" id="bloqueGasto">
+          <div class="desplegable-interior">
+
+            <div class="campo">
+              <span class="campo-titulo">¿En qué sección entra?</span>
+              <div class="fichas" id="fichas"></div>
+            </div>
+
+            <label class="campo">
+              <span class="campo-titulo">¿Por qué se sacó el dinero? <em>obligatorio</em></span>
+              <textarea id="motivo" rows="2" placeholder="Describe el motivo de la salida..."></textarea>
+            </label>
+
+          </div>
+        </div>
+
+        <button type="submit" class="boton-accion" id="botonGuardar">Registrar entrada</button>
+      </form>
+    </section>
+
+    <div class="rejilla">
+
+      <!-- Gráfica de gastos por sección -->
+      <section class="tarjeta">
+        <div class="tarjeta-cabeza">
+          <h2>Salidas por sección</h2>
+          <button id="btnTabla" class="boton-texto" type="button" aria-pressed="false">Ver tabla</button>
+        </div>
+
+        <div id="grafica" class="grafica"></div>
+
+        <table id="tabla" class="tabla" hidden>
+          <caption class="oculto-visual">Salidas de dinero agrupadas por sección</caption>
+          <thead>
+            <tr>
+              <th scope="col">Sección</th>
+              <th scope="col">Total</th>
+              <th scope="col">%</th>
+              <th scope="col">Movs.</th>
+            </tr>
+          </thead>
+          <tbody id="tablaCuerpo"></tbody>
+        </table>
+
+        <p id="sinGastos" class="nota-vacia">Todavía no hay salidas registradas.</p>
+      </section>
+
+      <!-- Historial -->
+      <section class="tarjeta">
+        <div class="tarjeta-cabeza">
+          <h2>Movimientos</h2>
+          <div class="filtros" id="filtros">
+            <button class="filtro activo" data-filtro="todos" type="button">Todos</button>
+            <button class="filtro" data-filtro="ingreso" type="button">Entradas</button>
+            <button class="filtro" data-filtro="gasto" type="button">Salidas</button>
+          </div>
+        </div>
+
+        <div id="historial" class="historial"></div>
+        <p id="sinMovimientos" class="nota-vacia">Aún no registras movimientos.</p>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Generador de .xlsx; si no carga, la app cae al respaldo CSV -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+
+</html>

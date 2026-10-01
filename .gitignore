@@ -1,0 +1,16 @@
+# Dependencias (por si algún día instalas paquetes aquí)
+node_modules/
+package-lock.json
+
+# Archivos del sistema
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Configuración de editores
+.vscode/
+.idea/
+
+# Registros y temporales
+*.log
+*.tmp

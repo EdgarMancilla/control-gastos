@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Importar movimientos · Control de gastos</title>
+  <link rel="stylesheet" href="estilos.css">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('tema');
+        if (t === 'oscuro' || t === 'claro') document.documentElement.dataset.tema = t;
+      } catch (e) { /* se usa el tema del sistema */ }
+    })();
+  </script>
+  <style>
+    .lista-hallazgos { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .hallazgo {
+      display: flex;
+      align-items: center;
+      gap: 0.7rem;
+      padding: 0.7rem 0.85rem;
+      border: 1px solid var(--borde);
+      border-radius: var(--radio-chico);
+      background: var(--superficie-2);
+    }
+
+    .hallazgo-texto { flex: 1; min-width: 0; }
+    .hallazgo-origen { font-weight: 600; font-size: 0.9rem; overflow-wrap: anywhere; }
+    .hallazgo-detalle { font-size: 0.8rem; color: var(--tinta-2); }
+
+    .registro {
+      max-height: 230px;
+      overflow-y: auto;
+      background: var(--campo-fondo);
+      border: 1px solid var(--borde);
+      border-radius: var(--radio-chico);
+      padding: 0.7rem 0.85rem;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .paso { display: flex; flex-direction: column; gap: var(--hueco); }
+  </style>
+</head>
+
+<body>
+
+  <header class="barra">
+    <div class="marca">
+      <span class="marca-punto"></span>
+      <span>Importar movimientos</span>
+    </div>
+    <a href="index.html" class="boton-texto" style="text-decoration:none">Volver a la app</a>
+  </header>
+
+  <section class="acceso">
+    <div class="tarjeta acceso-tarjeta">
+
+      <h1 class="acceso-titulo">Pasar tus movimientos a la nube</h1>
+      <p class="acceso-bajada">
+        Esta página busca los movimientos guardados en este navegador y los sube a tu
+        cuenta de Firebase. Úsala una sola vez.
+      </p>
+
+      <!-- Paso 1: entrar -->
+      <div id="paso1" class="paso">
+        <p class="acceso-nota">Primero entra con la cuenta donde quieres que queden los movimientos.</p>
+
+        <label class="campo">
+          <span class="campo-titulo">Correo</span>
+          <input type="email" id="correo" autocomplete="username" placeholder="tucorreo@ejemplo.com">
+        </label>
+
+        <label class="campo">
+          <span class="campo-titulo">Contraseña</span>
+          <input type="password" id="clave" autocomplete="current-password" placeholder="Tu contraseña">
+        </label>
+
+        <button type="button" id="btnEntrar" class="boton-accion">Entrar</button>
+      </div>
+
+      <!-- Paso 2: revisar y subir -->
+      <div id="paso2" class="paso" hidden>
+        <p class="acceso-nota">
+          Sesión iniciada como <strong id="quien"></strong>
+        </p>
+
+        <div id="hallazgos" class="lista-hallazgos"></div>
+
+        <button type="button" id="btnSubir" class="boton-accion">Subir a mi cuenta</button>
+        <button type="button" id="btnSalir" class="boton-texto">Cambiar de cuenta</button>
+      </div>
+
+      <p id="aviso" class="acceso-aviso" role="alert" hidden></p>
+      <pre id="registro" class="registro" hidden></pre>
+
+    </div>
+  </section>
+
+  <script type="module">
+    import { configFirebase, hayConfigFirebase, VERSION_FIREBASE } from './firebase-config.js';
+
+    const $ = (id) => document.getElementById(id);
+
+    const avisar = (texto, bien) => {
+      $('aviso').textContent = texto;
+      $('aviso').classList.toggle('ok', !!bien);
+      $('aviso').hidden = !texto;
+    };
+
+    const anotar = (linea) => {
+      $('registro').hidden = false;
+      $('registro').textContent += linea + '\n';
+      $('registro').scrollTop = $('registro').scrollHeight;
+    };
+
+    if (!hayConfigFirebase()) {
+      avisar('Falta configurar firebase-config.js antes de poder importar.');
+      throw new Error('sin configuración');
+    }
+
+    const base = 'https://www.gstatic.com/firebasejs/' + VERSION_FIREBASE + '/';
+    let appMod, authMod, dbMod;
+    try {
+      [appMod, authMod, dbMod] = await Promise.all([
+        import(base + 'firebase-app.js'),
+        import(base + 'firebase-auth.js'),
+        import(base + 'firebase-firestore.js'),
+      ]);
+    } catch (error) {
+      avisar('No se pudo cargar Firebase: ' + error.message);
+      throw error;
+    }
+
+    const app = appMod.initializeApp(configFirebase);
+    const auth = authMod.getAuth(app);
+    const db = dbMod.getFirestore(app);
+
+    /* Busca en el navegador TODO lo que parezca una lista de
+       movimientos: la clave antigua y las de cada cuenta local. */
+    function buscarGuardados() {
+      const encontrados = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const clave = localStorage.key(i);
+        if (!clave) continue;
+        const esAntigua = clave === 'movimientos_v1';
+        const esDeCuenta = clave.startsWith('movimientos_v1::') || clave.startsWith('movimientos_v2::');
+        if (!esAntigua && !esDeCuenta) continue;
+
+        try {
+          const datos = JSON.parse(localStorage.getItem(clave));
+          if (Array.isArray(datos) && datos.length) {
+            encontrados.push({ clave, datos });
+          }
+        } catch { /* clave con contenido ilegible: se ignora */ }
+      }
+      return encontrados;
+    }
+
+    let hallazgos = [];
+
+    function pintarHallazgos() {
+      hallazgos = buscarGuardados();
+      const caja = $('hallazgos');
+      caja.innerHTML = '';
+
+      if (!hallazgos.length) {
+        caja.innerHTML = '<p class="acceso-nota">No se encontraron movimientos guardados en este navegador.</p>';
+        $('btnSubir').disabled = true;
+        return;
+      }
+
+      hallazgos.forEach((h, indice) => {
+        const fila = document.createElement('div');
+        fila.className = 'hallazgo';
+
+        const marca = document.createElement('input');
+        marca.type = 'checkbox';
+        marca.checked = true;
+        marca.dataset.indice = String(indice);
+        marca.style.width = 'auto';
+
+        const texto = document.createElement('div');
+        texto.className = 'hallazgo-texto';
+
+        const origen = document.createElement('div');
+        origen.className = 'hallazgo-origen';
+        origen.textContent = h.clave === 'movimientos_v1'
+          ? 'Movimientos de antes de que hubiera cuentas'
+          : 'Cuenta local: ' + h.clave.split('::')[1];
+
+        const detalle = document.createElement('div');
+        detalle.className = 'hallazgo-detalle';
+        const entradas = h.datos.filter((m) => m.tipo === 'ingreso').length;
+        detalle.textContent = h.datos.length + ' movimientos (' +
+          entradas + ' entradas, ' + (h.datos.length - entradas) + ' salidas)';
+
+        texto.append(origen, detalle);
+        fila.append(marca, texto);
+        caja.appendChild(fila);
+      });
+
+      $('btnSubir').disabled = false;
+    }
+
+    $('btnEntrar').addEventListener('click', async () => {
+      const boton = $('btnEntrar');
+      boton.disabled = true;
+      boton.textContent = 'Entrando…';
+      avisar('');
+      try {
+        await authMod.signInWithEmailAndPassword(auth, $('correo').value.trim(), $('clave').value);
+      } catch (error) {
+        avisar('No se pudo entrar: ' + (error.code || error.message));
+      } finally {
+        boton.disabled = false;
+        boton.textContent = 'Entrar';
+      }
+    });
+
+    $('btnSalir').addEventListener('click', () => authMod.signOut(auth));
+
+    $('btnSubir').addEventListener('click', async () => {
+      const marcados = [...document.querySelectorAll('#hallazgos input:checked')]
+        .map((c) => hallazgos[Number(c.dataset.indice)]);
+
+      if (!marcados.length) return avisar('Marca al menos un grupo para subir.');
+
+      const yaHecho = localStorage.getItem('importado::' + auth.currentUser.uid);
+      if (yaHecho && !confirm(
+        'Ya se importó antes a esta cuenta (' + yaHecho + ').\n\n' +
+        'Si continúas, los movimientos quedarán duplicados. ¿Seguir de todos modos?'
+      )) return;
+
+      const boton = $('btnSubir');
+      boton.disabled = true;
+      boton.textContent = 'Subiendo…';
+      avisar('');
+
+      const coleccion = dbMod.collection(db, 'usuarios', auth.currentUser.uid, 'movimientos');
+      let subidos = 0;
+      let fallidos = 0;
+
+      for (const grupo of marcados) {
+        anotar('— ' + grupo.clave + ' (' + grupo.datos.length + ')');
+
+        for (const original of grupo.datos) {
+          // El id local se descarta: Firestore asigna el suyo.
+          const { id, concepto, ...resto } = original;
+          const mov = {
+            ...resto,
+            nombre: original.nombre || concepto || (original.tipo === 'gasto' ? 'Salida' : 'Entrada'),
+            registrado: original.registrado ||
+              (Number(id) > 0 ? new Date(Number(id)).toISOString() : new Date().toISOString()),
+          };
+          // Las reglas exigen motivo en las salidas.
+          if (mov.tipo === 'gasto' && !mov.motivo) mov.motivo = 'Sin motivo registrado';
+
+          try {
+            await dbMod.addDoc(coleccion, mov);
+            subidos++;
+          } catch (error) {
+            fallidos++;
+            anotar('   ✗ ' + (mov.nombre || '(sin nombre)') + ': ' + (error.code || error.message));
+          }
+        }
+      }
+
+      anotar('Listo: ' + subidos + ' subidos, ' + fallidos + ' con error.');
+
+      if (subidos) {
+        localStorage.setItem('importado::' + auth.currentUser.uid, new Date().toLocaleString('es-MX'));
+      }
+
+      avisar(
+        fallidos
+          ? 'Se subieron ' + subidos + ', pero ' + fallidos + ' fallaron. Revisa el detalle de abajo.'
+          : 'Listo: se subieron ' + subidos + ' movimientos. Ya puedes volver a la app.',
+        !fallidos
+      );
+
+      boton.disabled = false;
+      boton.textContent = 'Subir a mi cuenta';
+    });
+
+    authMod.onAuthStateChanged(auth, (usuario) => {
+      $('paso1').hidden = Boolean(usuario);
+      $('paso2').hidden = !usuario;
+      if (usuario) {
+        $('quien').textContent = usuario.email;
+        pintarHallazgos();
+      }
+    });
+  </script>
+</body>
+
+</html>

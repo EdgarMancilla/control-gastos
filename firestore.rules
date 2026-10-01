@@ -1,0 +1,49 @@
+rules_version = '2';
+
+/* ===== Reglas de seguridad de Firestore =====
+
+   ESTO es lo que protege los datos. No el JavaScript de la página:
+   cualquiera puede abrir las herramientas del navegador y cambiarlo.
+   Estas reglas corren en los servidores de Google y no se pueden
+   esquivar desde el navegador.
+
+   Dónde pegarlas:
+     console.firebase.google.com -> tu proyecto
+     -> Firestore Database -> pestaña "Reglas"
+     -> pega todo este archivo -> Publicar
+
+   Qué dicen, en una línea: cada quien puede leer y escribir
+   únicamente dentro de su propia carpeta, y nada más.            */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Los movimientos viven en  usuarios/{uid}/movimientos/{id}
+    // El {uid} es el identificador que Firebase le da a cada cuenta.
+    match /usuarios/{uid}/movimientos/{movimiento} {
+
+      // Solo el dueño, y solo con la sesión iniciada.
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+
+      // Al escribir, además se revisa que el dato tenga buena forma:
+      // así un error de la página no mete basura en la base.
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.tipo in ['ingreso', 'gasto']
+        && request.resource.data.cantidad is number
+        && request.resource.data.cantidad > 0
+        && request.resource.data.fecha is string
+        && request.resource.data.nombre is string
+        // El motivo es obligatorio en las salidas de dinero.
+        && (request.resource.data.tipo == 'ingreso'
+            || (request.resource.data.motivo is string
+                && request.resource.data.motivo.size() > 0));
+    }
+
+    // Todo lo demás queda cerrado. Sin esta línea, una colección
+    // nueva creada por descuido podría quedar abierta a cualquiera.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

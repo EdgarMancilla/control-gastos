@@ -1,0 +1,755 @@
+/* ===== Flujo - prototipo 2 (claro y fluido) =====
+   El layout no usa anchos fijos: tipografia, espaciado y columnas
+   se interpolan con clamp() y auto-fit, asi que la pagina se adapta
+   de forma continua en vez de saltar entre breakpoints. */
+
+/* ---------- Temas ----------
+   Todo el color vive en estas variables; ninguna regla de abajo
+   escribe un color directo. Cambiar de tema solo reasigna tokens.
+
+   Cada token tiene un trabajo distinto y por eso NO se reutilizan:
+   los tonos "-dato" son para las barras de la grafica (validados
+   contra la superficie), los "-texto" tienen el contraste que pide
+   un texto pequeño, y los "-relleno" son los fondos solidos de
+   botones, con su propio color de texto encima. */
+
+:root {
+  color-scheme: light;
+
+  /* Superficies */
+  --fondo: #f4f3ef;
+  --superficie: #fcfcfb;
+  --superficie-2: #f0efea;
+  --campo-fondo: #fcfcfb;
+  --barra-fondo: rgba(252, 252, 251, .78);
+  --borde: #e4e2da;
+  --borde-fuerte: #d3d0c5;
+
+  /* Texto */
+  --tinta: #0b0b0b;
+  --tinta-2: #52514e;
+  --tinta-3: #6e6c65;
+
+  /* Marcas de datos: paleta validada para la superficie clara */
+  --entra-dato: #1baf7a;
+  --sale-dato: #d95926;   /* pisado un paso: a #eb6834 le faltaba contraste contra el riel */
+
+  /* Los mismos colores, pisados hasta que sirvan como texto */
+  --entra-texto: #0f7a55;
+  --sale-texto: #b8441a;
+
+  /* Rellenos solidos y el color que va encima de ellos */
+  --relleno-entra: #0f7a55;
+  --relleno-sale: #b8441a;
+  --sobre-relleno: #ffffff;
+
+  /* Ficha seleccionada: invierte respecto al fondo */
+  --ficha-fondo: #0b0b0b;
+  --ficha-texto: #ffffff;
+
+  --acento: #2a78d6;
+  --sombra-tenue: rgba(0, 0, 0, .06);
+
+  /* Ritmo fluido: una sola escala que crece con el ancho */
+  --hueco: clamp(0.85rem, 0.55rem + 1.2vw, 1.5rem);
+  --respiro: clamp(1.1rem, 0.7rem + 1.6vw, 2rem);
+  --radio: clamp(14px, 1.2vw, 22px);
+  --radio-chico: 10px;
+
+  --sombra: 0 1px 2px rgba(28, 25, 20, .04), 0 8px 24px -12px rgba(28, 25, 20, .16);
+  --curva: cubic-bezier(.22, 1, .36, 1);
+}
+
+/* Valores del tema oscuro, escritos una sola vez y aplicados en dos
+   lugares: el ajuste del sistema y el boton de sol/luna. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    color-scheme: dark;
+
+    --fondo: #121211;
+    --superficie: #1a1a19;
+    --superficie-2: #252420;
+    --campo-fondo: #121211;
+    --barra-fondo: rgba(26, 26, 25, .82);
+    --borde: #2f2e29;
+    --borde-fuerte: #454339;
+
+    --tinta: #f7f7f3;
+    --tinta-2: #c3c2b7;
+    --tinta-3: #9d9b91;
+
+    --entra-dato: #199e70;
+    --sale-dato: #d95926;
+
+    --entra-texto: #48d9a2;
+    --sale-texto: #ff9d75;
+
+    --relleno-entra: #48d9a2;
+    --relleno-sale: #ff9d75;
+    --sobre-relleno: #0b0b0b;
+
+    --ficha-fondo: #f7f7f3;
+    --ficha-texto: #0b0b0b;
+
+    --acento: #3987e5;
+    --sombra-tenue: rgba(0, 0, 0, .4);
+    --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -12px rgba(0, 0, 0, .6);
+  }
+}
+
+/* El boton gana sobre el ajuste del sistema, en los dos sentidos. */
+:root[data-tema="oscuro"] {
+  color-scheme: dark;
+
+  --fondo: #121211;
+  --superficie: #1a1a19;
+  --superficie-2: #252420;
+  --campo-fondo: #121211;
+  --barra-fondo: rgba(26, 26, 25, .82);
+  --borde: #2f2e29;
+  --borde-fuerte: #454339;
+
+  --tinta: #f7f7f3;
+  --tinta-2: #c3c2b7;
+  --tinta-3: #9d9b91;
+
+  --entra-dato: #199e70;
+  --sale-dato: #d95926;
+
+  --entra-texto: #48d9a2;
+  --sale-texto: #ff9d75;
+
+  --relleno-entra: #48d9a2;
+  --relleno-sale: #ff9d75;
+  --sobre-relleno: #0b0b0b;
+
+  --ficha-fondo: #f7f7f3;
+  --ficha-texto: #0b0b0b;
+
+  --acento: #3987e5;
+  --sombra-tenue: rgba(0, 0, 0, .4);
+  --sombra: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -12px rgba(0, 0, 0, .6);
+}
+
+* { box-sizing: border-box; }
+
+/* El atributo hidden lo pisa cualquier regla que fije display (y aqui
+   casi todas lo hacen: flex, grid, inline-flex). Esta linea devuelve
+   a hidden el poder de ocultar de verdad. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--tinta);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: clamp(0.95rem, 0.9rem + 0.2vw, 1.05rem);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2 { margin: 0; font-weight: 650; letter-spacing: -0.015em; }
+
+button { font: inherit; cursor: pointer; }
+
+.oculto-visual {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* ---------- Barra superior ---------- */
+.barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: clamp(0.8rem, 2vw, 1.2rem) var(--respiro);
+  background: var(--barra-fondo);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--borde);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  font-size: 1.05rem;
+}
+
+.marca-punto {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--entra-dato), var(--acento));
+}
+
+.barra-acciones { display: flex; align-items: center; gap: 6px; }
+
+/* ---------- Botones ---------- */
+.boton-suave {
+  border: 1px solid var(--borde-fuerte);
+  background: var(--superficie);
+  color: var(--tinta);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-size: 0.87rem;
+  font-weight: 550;
+  transition: background .18s var(--curva), border-color .18s var(--curva), transform .18s var(--curva);
+}
+.boton-suave:hover { background: var(--superficie-2); border-color: var(--tinta-3); }
+.boton-suave:active { transform: scale(.97); }
+
+.boton-texto {
+  border: 0;
+  background: transparent;
+  color: var(--tinta-2);
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.87rem;
+  transition: color .18s var(--curva), background .18s var(--curva);
+}
+.boton-texto:hover { color: var(--tinta); background: var(--superficie-2); }
+
+/* Boton de sol/luna: solo se ve el icono del tema al que se cambiaria... */
+.boton-icono {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 50%;
+  background: var(--superficie);
+  color: var(--tinta-2);
+  transition: background .18s var(--curva), color .18s var(--curva),
+              border-color .18s var(--curva), transform .3s var(--curva);
+}
+.boton-icono:hover {
+  background: var(--superficie-2);
+  color: var(--tinta);
+  border-color: var(--tinta-3);
+  transform: rotate(-18deg);
+}
+/* ...los dos iconos ocupan la misma celda y se alterna cual se muestra. */
+.boton-icono svg { grid-area: 1 / 1; }
+.icono-luna { display: none; }
+
+:root[data-tema="oscuro"] .icono-sol { display: none; }
+:root[data-tema="oscuro"] .icono-luna { display: block; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) .icono-sol { display: none; }
+  :root:not([data-tema="claro"]) .icono-luna { display: block; }
+}
+
+.boton-accion {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radio-chico);
+  padding: 0.85rem;
+  font-size: 0.97rem;
+  font-weight: 600;
+  color: var(--sobre-relleno);
+  background: var(--relleno-entra);
+  transition: background .25s var(--curva), transform .18s var(--curva), box-shadow .25s var(--curva);
+  box-shadow: 0 6px 18px -10px color-mix(in srgb, var(--relleno-entra) 70%, black);
+}
+.boton-accion:hover { transform: translateY(-1px); }
+.boton-accion:active { transform: translateY(0) scale(.99); }
+.boton-accion.salida {
+  background: var(--relleno-sale);
+  box-shadow: 0 6px 18px -10px color-mix(in srgb, var(--relleno-sale) 70%, black);
+}
+
+:where(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+/* ---------- Lienzo ---------- */
+.lienzo {
+  /* El ancho util crece con la ventana en vez de toparse de golpe. */
+  width: min(100% - 2 * var(--respiro), 1180px);
+  margin-inline: auto;
+  padding-block: var(--respiro) calc(var(--respiro) * 2.5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--respiro);
+}
+
+/* ---------- Pantalla de acceso ---------- */
+.acceso {
+  min-height: calc(100vh - 70px);
+  display: grid;
+  place-items: center;
+  padding: var(--respiro);
+}
+
+.acceso-tarjeta {
+  width: min(100%, 400px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--hueco);
+}
+
+.acceso-titulo {
+  font-size: clamp(1.3rem, 1.1rem + 1vw, 1.7rem);
+  letter-spacing: -0.025em;
+}
+
+.acceso-bajada {
+  margin: -0.6rem 0 0;
+  color: var(--tinta-2);
+  font-size: 0.9rem;
+}
+
+.acceso-segmento { max-width: none; margin-bottom: 0; }
+
+.acceso-aviso {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radio-chico);
+  background: color-mix(in srgb, var(--sale-texto) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sale-texto) 35%, transparent);
+  color: var(--sale-texto);
+  font-size: 0.85rem;
+}
+.acceso-aviso.ok {
+  background: color-mix(in srgb, var(--entra-texto) 12%, transparent);
+  border-color: color-mix(in srgb, var(--entra-texto) 35%, transparent);
+  color: var(--entra-texto);
+}
+
+.acceso-nota {
+  margin: 0;
+  color: var(--tinta-3);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.acceso-olvide { align-self: center; margin-top: -0.4rem; }
+
+/* Deja claro de dónde salen los datos: del navegador o del servidor. */
+.insignia-modo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--entra-texto) 12%, transparent);
+  color: var(--entra-texto);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.insignia-modo::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.insignia-modo.local {
+  background: var(--superficie-2);
+  color: var(--tinta-2);
+}
+
+/* Usuario con la sesión iniciada */
+.chip-usuario {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  color: var(--tinta-2);
+  font-size: 0.82rem;
+  font-weight: 600;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Cifra principal ---------- */
+.cabecera { padding: clamp(1rem, 3vw, 2.2rem) 0 0; }
+
+.cabecera-etiqueta {
+  margin: 0;
+  color: var(--tinta-3);
+  font-size: 0.87rem;
+  letter-spacing: 0.02em;
+}
+
+.cabecera-cifra {
+  margin: 0.15em 0 0;
+  font-size: clamp(2.4rem, 1.2rem + 6vw, 4.6rem);
+  font-weight: 640;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.cabecera-cifra.negativo { color: var(--sale-texto); }
+
+.cabecera-pares {
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(0.8rem, 2vw, 1.6rem);
+  margin-top: 0.7rem;
+  color: var(--tinta-2);
+  font-size: 0.92rem;
+}
+
+.par { display: inline-flex; align-items: center; gap: 0.45rem; }
+.par strong { font-variant-numeric: tabular-nums; color: var(--tinta); font-weight: 600; }
+
+.par-punto { width: 8px; height: 8px; border-radius: 50%; }
+.par-entra .par-punto { background: var(--entra-texto); }
+.par-sale .par-punto { background: var(--sale-texto); }
+
+/* ---------- Tarjetas ---------- */
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: var(--respiro);
+  box-shadow: var(--sombra);
+}
+
+.tarjeta-cabeza {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: var(--hueco);
+}
+
+.tarjeta-cabeza h2 { font-size: 1.02rem; }
+
+/* Dos columnas solo cuando de verdad caben; si no, una sola. */
+.rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr));
+  gap: var(--respiro);
+  align-items: start;
+}
+
+/* ---------- Segmento Entrada / Salida ---------- */
+.segmento {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--superficie-2);
+  border-radius: 999px;
+  padding: 4px;
+  margin-bottom: var(--hueco);
+  /* No tiene sentido que crezca a lo ancho de la tarjeta en pantallas grandes. */
+  max-width: 420px;
+}
+
+.seg-opcion {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  background: transparent;
+  color: var(--tinta-2);
+  padding: 0.6rem;
+  border-radius: 999px;
+  font-size: 0.93rem;
+  font-weight: 600;
+  transition: color .25s var(--curva);
+}
+.seg-opcion.activa { color: var(--sobre-relleno); }
+
+/* La pastilla se desliza entre las dos opciones. */
+.seg-indicador {
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 999px;
+  background: var(--relleno-entra);
+  transition: transform .34s var(--curva), background .34s var(--curva);
+}
+.seg-indicador.derecha { transform: translateX(100%); background: var(--relleno-sale); }
+
+/* ---------- Campos ---------- */
+form { display: flex; flex-direction: column; gap: var(--hueco); }
+
+.campo { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+
+.campo-titulo {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--tinta-2);
+  letter-spacing: 0.01em;
+}
+.campo-titulo em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--sale-texto);
+  font-size: 0.75rem;
+}
+
+input, textarea {
+  width: 100%;
+  background: var(--campo-fondo);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-chico);
+  padding: 0.65rem 0.8rem;
+  color: var(--tinta);
+  font: inherit;
+  transition: border-color .2s var(--curva), box-shadow .2s var(--curva);
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--acento);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acento) 16%, transparent);
+}
+
+textarea { resize: vertical; }
+
+/* La fila se reacomoda sola: el monto manda, lo demas cede espacio. */
+.linea-principal {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  gap: var(--hueco);
+}
+.campo-fecha { max-width: 100%; }
+
+.monto-caja { position: relative; display: block; }
+.monto-signo {
+  position: absolute;
+  left: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--tinta-3);
+  font-size: 1.05rem;
+  pointer-events: none;
+}
+.monto-caja input {
+  padding-left: 1.75rem;
+  font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.3rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Bloque desplegable (solo salidas) ----------
+   grid-template-rows 0fr -> 1fr anima la altura real
+   sin necesidad de conocerla de antemano. */
+.desplegable {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows .38s var(--curva), opacity .28s var(--curva);
+}
+.desplegable.abierto { grid-template-rows: 1fr; opacity: 1; }
+
+.desplegable-interior {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hueco);
+  min-height: 0;
+}
+
+/* ---------- Fichas de seccion ---------- */
+.fichas { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+
+.ficha {
+  border: 1px solid var(--borde-fuerte);
+  background: var(--superficie);
+  color: var(--tinta-2);
+  border-radius: 999px;
+  padding: 0.42rem 0.8rem;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: background .2s var(--curva), color .2s var(--curva),
+              border-color .2s var(--curva), transform .2s var(--curva);
+}
+.ficha:hover { border-color: var(--tinta-3); transform: translateY(-1px); }
+.ficha.activa {
+  background: var(--ficha-fondo);
+  border-color: var(--ficha-fondo);
+  color: var(--ficha-texto);
+}
+
+/* ---------- Grafica de barras ---------- */
+.grafica { display: flex; flex-direction: column; gap: clamp(0.7rem, 1.4vw, 1.05rem); }
+
+.barra-fila { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.barra-etiquetas {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.87rem;
+}
+
+.barra-nombre {
+  color: var(--tinta);
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Los valores van siempre escritos: la identidad nunca depende solo del color. */
+.barra-valor {
+  color: var(--tinta-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.barra-valor span { color: var(--tinta-3); }
+
+.barra-riel {
+  height: 10px;
+  background: var(--superficie-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barra-relleno {
+  height: 100%;
+  background: var(--sale-dato);
+  /* Extremo redondeado solo del lado del dato, anclado a la linea base. */
+  border-radius: 0 4px 4px 0;
+  transform-origin: left;
+  animation: crecer .55s var(--curva) both;
+}
+
+@keyframes crecer { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* ---------- Tabla (vista alterna de la grafica) ---------- */
+.tabla { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.tabla th, .tabla td {
+  text-align: right;
+  padding: 0.5rem 0.4rem;
+  border-bottom: 1px solid var(--borde);
+}
+.tabla th:first-child, .tabla td:first-child { text-align: left; }
+.tabla th { color: var(--tinta-2); font-weight: 600; }
+.tabla td { font-variant-numeric: tabular-nums; }
+.tabla tr:last-child td { border-bottom: 0; font-weight: 650; }
+
+/* ---------- Filtros ---------- */
+.filtros { display: flex; gap: 0.2rem; background: var(--superficie-2); padding: 3px; border-radius: 999px; }
+
+.filtro {
+  border: 0;
+  background: transparent;
+  color: var(--tinta-2);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  transition: background .22s var(--curva), color .22s var(--curva);
+}
+.filtro.activo { background: var(--superficie); color: var(--tinta); box-shadow: 0 1px 2px var(--sombra-tenue); }
+
+/* ---------- Historial ---------- */
+.historial { display: flex; flex-direction: column; gap: clamp(0.9rem, 2vw, 1.4rem); }
+
+.dia-cabeza {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--borde);
+  margin-bottom: 0.5rem;
+}
+
+.dia-fecha { font-size: 0.8rem; font-weight: 600; color: var(--tinta-2); }
+.dia-neto { font-size: 0.8rem; color: var(--tinta-3); font-variant-numeric: tabular-nums; }
+
+.movimiento {
+  /* Nombre y monto en el primer renglon; el motivo abajo a todo lo ancho. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: start;
+  column-gap: 0.75rem;
+  row-gap: 0.15rem;
+  padding: 0.55rem 0.5rem;
+  margin-inline: -0.5rem;
+  border-radius: var(--radio-chico);
+  transition: background .2s var(--curva);
+  animation: aparecer .35s var(--curva) both;
+}
+.movimiento:hover { background: var(--superficie-2); }
+
+@keyframes aparecer {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+.mov-marca {
+  width: 34px; height: 34px;
+  flex: 0 0 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-size: 0.95rem;
+  background: var(--superficie-2);
+}
+
+.mov-cuerpo { min-width: 0; }
+.mov-nombre { font-weight: 550; overflow-wrap: anywhere; }
+.mov-seccion { font-size: 0.8rem; color: var(--tinta-3); }
+
+.mov-motivo {
+  grid-column: 2 / -1;
+  font-size: 0.82rem;
+  color: var(--tinta-2);
+  overflow-wrap: anywhere;
+}
+
+.mov-monto { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.movimiento.ingreso .mov-monto { color: var(--entra-texto); }
+.movimiento.gasto .mov-monto { color: var(--sale-texto); }
+
+.mov-quitar {
+  border: 0;
+  background: transparent;
+  color: var(--tinta-3);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  opacity: 0;
+  transition: opacity .2s var(--curva), color .2s var(--curva);
+}
+.movimiento:hover .mov-quitar, .mov-quitar:focus-visible { opacity: 1; }
+.mov-quitar:hover { color: var(--sale-texto); }
+
+/* En pantallas tactiles no hay hover: el boton se queda visible. */
+@media (hover: none) {
+  .mov-quitar { opacity: 1; }
+}
+
+.nota-vacia {
+  margin: 0;
+  padding: clamp(1.2rem, 4vw, 2.2rem) 0;
+  text-align: center;
+  color: var(--tinta-3);
+  font-size: 0.9rem;
+}
+
+/* ---------- Accesibilidad de movimiento ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

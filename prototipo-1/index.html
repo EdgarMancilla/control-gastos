@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control de Ingresos y Gastos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <header class="topbar">
+    <h1>💰 Control de Dinero</h1>
+    <div class="acciones">
+      <button id="btnExcel" class="btn-ghost destacado" type="button">📊 Descargar Excel</button>
+      <button id="btnExportar" class="btn-ghost" type="button">Descargar CSV</button>
+    </div>
+  </header>
+
+  <main class="contenedor">
+
+    <!-- Resumen -->
+    <section class="resumen">
+      <article class="tarjeta saldo">
+        <span class="etiqueta">Saldo actual</span>
+        <strong id="saldoTotal">$0.00</strong>
+      </article>
+      <article class="tarjeta ingreso">
+        <span class="etiqueta">Ingresos</span>
+        <strong id="totalIngresos">$0.00</strong>
+      </article>
+      <article class="tarjeta gasto">
+        <span class="etiqueta">Gastos</span>
+        <strong id="totalGastos">$0.00</strong>
+      </article>
+    </section>
+
+    <div class="columnas">
+
+      <!-- Formulario -->
+      <section class="panel">
+        <div class="tabs">
+          <button class="tab activa" data-tipo="ingreso" type="button">Ingreso</button>
+          <button class="tab" data-tipo="gasto" type="button">Gasto</button>
+        </div>
+
+        <form id="formMovimiento" autocomplete="off">
+          <label>
+            Cantidad
+            <div class="campo-moneda">
+              <span>$</span>
+              <input type="number" id="cantidad" step="0.01" min="0.01" placeholder="0.00" required>
+            </div>
+          </label>
+
+          <label>
+            Fecha
+            <input type="date" id="fecha" required>
+          </label>
+
+          <!-- Nombre corto: se usa en los dos tipos -->
+          <label id="grupoConcepto">
+            <span><span id="etiquetaConcepto">Concepto del ingreso</span> <span
+                class="opcional">(opcional)</span></span>
+            <input type="text" id="concepto" placeholder="Ej. Venta, sueldo, préstamo...">
+          </label>
+
+          <!-- Solo gastos -->
+          <label id="grupoCategoria" hidden>
+            Categoría del gasto
+            <select id="categoria">
+              <option value="">Selecciona una sección...</option>
+            </select>
+          </label>
+
+          <label id="grupoMotivo" hidden>
+            ¿Por qué se sacó el dinero?
+            <textarea id="motivo" rows="3" placeholder="Describe el motivo de la salida de dinero..."></textarea>
+          </label>
+
+          <button type="submit" class="btn-principal" id="btnGuardar">Registrar ingreso</button>
+        </form>
+      </section>
+
+      <!-- Historial -->
+      <section class="panel">
+        <div class="panel-encabezado">
+          <h2>Movimientos</h2>
+          <select id="filtro">
+            <option value="todos">Todos</option>
+            <option value="ingreso">Solo ingresos</option>
+            <option value="gasto">Solo gastos</option>
+          </select>
+        </div>
+        <ul id="listaMovimientos" class="lista"></ul>
+        <p id="vacio" class="vacio">Aún no hay movimientos registrados.</p>
+      </section>
+
+    </div>
+
+    <!-- Gastos por sección -->
+    <section class="panel">
+      <div class="panel-encabezado">
+        <h2>Gastos por sección</h2>
+      </div>
+      <div id="desglose" class="desglose"></div>
+      <p id="sinGastos" class="vacio">Todavía no registras gastos.</p>
+    </section>
+
+  </main>
+
+  <!-- Generador de archivos .xlsx (si no carga, la app cae al respaldo CSV) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
