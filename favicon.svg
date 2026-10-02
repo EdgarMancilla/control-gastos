@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Billete">
+  <!-- Fondo a sangre: a 16px un icono pequeño flotando se pierde,
+       y una figura que ocupa todo el cuadro se reconoce al vuelo. -->
+  <rect width="64" height="64" rx="14" fill="#0f7a55"/>
+
+  <!-- El billete. Sin adornos: a tamaño de pestaña, cualquier
+       detalle fino se convierte en suciedad. -->
+  <rect x="9" y="18" width="46" height="28" rx="4" fill="#ffffff"/>
+
+  <!-- El centro, bien grande para que a 16px siga siendo una
+       marca clara dentro del billete. -->
+  <circle cx="32" cy="32" r="10" fill="#0f7a55"/>
+  <text x="32" y="32" text-anchor="middle" dominant-baseline="central"
+        font-family="Segoe UI, system-ui, sans-serif" font-size="16"
+        font-weight="700" fill="#ffffff">$</text>
+</svg>

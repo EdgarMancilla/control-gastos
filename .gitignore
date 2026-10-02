@@ -1,6 +1,5 @@
 # Dependencias (por si algún día instalas paquetes aquí)
 node_modules/
-package-lock.json
 
 # Archivos del sistema
 Thumbs.db

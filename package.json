@@ -1,0 +1,13 @@
+{
+  "name": "control-gastos",
+  "version": "1.0.0",
+  "description": "Control de entradas y salidas de dinero, por cuentas y secciones",
+  "private": true,
+  "scripts": {
+    "inicio": "node servidor.js",
+    "test": "node pruebas/ejecutar.js"
+  },
+  "devDependencies": {
+    "jsdom": "^29.0.0"
+  }
+}

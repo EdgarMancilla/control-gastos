@@ -4,7 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flujo · Control de dinero</title>
+  <title>Control de gastos</title>
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <!-- Para cuando se agrega a la pantalla de inicio del celular -->
+  <link rel="apple-touch-icon" href="icono-180.png">
+
+  <!-- Color de la barra del navegador en el móvil, a juego con el tema -->
+  <meta name="theme-color" content="#f4f3ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)">
+
   <link rel="stylesheet" href="estilos.css">
 
   <!-- Se aplica el tema guardado ANTES de pintar, para que no se vea
@@ -106,12 +115,20 @@
           <p class="cabecera-cifra" id="saldoTotal">$0.00</p>
         </div>
 
-        <label class="selector-mes">
-          <span class="oculto-visual">Mes a mostrar</span>
-          <select id="selectorMes">
-            <option value="todos">Todos los meses</option>
-          </select>
-        </label>
+        <div class="selectores">
+          <label class="selector-mes">
+            <span class="oculto-visual">Cuenta a mostrar</span>
+            <select id="selectorCuenta">
+              <option value="todas">Todas las cuentas</option>
+            </select>
+          </label>
+          <label class="selector-mes">
+            <span class="oculto-visual">Mes a mostrar</span>
+            <select id="selectorMes">
+              <option value="todos">Todos los meses</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <div class="cabecera-pares">
@@ -138,9 +155,10 @@
         <button type="button" id="btnCancelarEdicion" class="boton-texto">Cancelar</button>
       </div>
 
-      <div class="segmento" id="segmento">
+      <div class="segmento segmento-tres" id="segmento">
         <button class="seg-opcion activa" data-tipo="ingreso" type="button">Entrada</button>
         <button class="seg-opcion" data-tipo="gasto" type="button">Salida</button>
+        <button class="seg-opcion" data-tipo="transferencia" type="button">Traspaso</button>
         <span class="seg-indicador" id="segIndicador"></span>
       </div>
 
@@ -166,6 +184,34 @@
           </label>
         </div>
 
+        <!-- En qué cuenta entra o de cuál sale -->
+        <div class="campo" id="grupoCuenta">
+          <span class="campo-titulo" id="tituloCuenta">¿A qué cuenta entra?</span>
+          <div class="fichas-caja">
+            <div class="fichas" id="fichasCuenta"></div>
+          </div>
+          <p class="pista" id="pistaSinCuentas" hidden>
+            Primero registra una cuenta abajo, en <strong>Mis cuentas</strong>.
+          </p>
+        </div>
+
+        <!-- Solo en traspasos: de dónde sale y a dónde llega -->
+        <div class="desplegable" id="bloqueTraspaso">
+          <div class="desplegable-interior">
+            <div class="linea-traspaso">
+              <label class="campo">
+                <span class="campo-titulo">Sale de</span>
+                <select id="traspasoOrigen"></select>
+              </label>
+              <span class="flecha-traspaso" aria-hidden="true">→</span>
+              <label class="campo">
+                <span class="campo-titulo">Entra a</span>
+                <select id="traspasoDestino"></select>
+              </label>
+            </div>
+          </div>
+        </div>
+
         <!-- Bloque que solo aparece en salidas; se despliega con animación -->
         <div class="desplegable" id="bloqueGasto">
           <div class="desplegable-interior">
@@ -187,6 +233,65 @@
 
         <button type="submit" class="boton-accion" id="botonGuardar">Registrar entrada</button>
       </form>
+    </section>
+
+    <!-- Dónde está el dinero -->
+    <section class="tarjeta">
+      <div class="tarjeta-cabeza">
+        <h2>Mis cuentas</h2>
+        <button id="btnNuevaCuenta" class="boton-texto" type="button">+ Agregar cuenta</button>
+      </div>
+
+      <!-- Alta y edición de una cuenta -->
+      <form id="formCuenta" class="form-cuenta" hidden>
+        <div class="linea-cuenta">
+          <label class="campo">
+            <span class="campo-titulo">Nombre</span>
+            <input type="text" id="cuentaNombre" maxlength="40" placeholder="Ej. BBVA" required>
+          </label>
+
+          <label class="campo">
+            <span class="campo-titulo">Tipo</span>
+            <select id="cuentaTipo">
+              <option value="banco">🏦 Banco</option>
+              <option value="efectivo">💵 Efectivo</option>
+              <option value="tarjeta">💳 Tarjeta</option>
+            </select>
+          </label>
+
+          <label class="campo">
+            <span class="campo-titulo">Saldo inicial</span>
+            <span class="monto-caja">
+              <span class="monto-signo">$</span>
+              <input type="number" id="cuentaSaldo" step="0.01" placeholder="0.00">
+            </span>
+          </label>
+        </div>
+
+        <p class="pista">
+          El saldo inicial es lo que ya tienes ahí hoy. Si lo dejas en blanco, empieza en cero.
+        </p>
+
+        <div class="botones-cuenta">
+          <button type="submit" class="boton-accion" id="btnGuardarCuenta">Guardar cuenta</button>
+          <button type="button" class="boton-texto" id="btnCancelarCuenta">Cancelar</button>
+        </div>
+      </form>
+
+      <div id="graficaCuentas" class="grafica"></div>
+
+      <p id="sinCuentas" class="nota-vacia">
+        Aún no registras dónde guardas tu dinero. Agrega tu primera cuenta.
+      </p>
+
+      <!-- Aparece solo si hay movimientos anteriores a las cuentas -->
+      <div id="avisoSinAsignar" class="aviso-asignar" hidden>
+        <p id="textoSinAsignar"></p>
+        <div class="linea-asignar">
+          <select id="cuentaDestinoAsignar"></select>
+          <button type="button" id="btnAsignar" class="boton-suave">Asignarlos</button>
+        </div>
+      </div>
     </section>
 
     <div class="rejilla">

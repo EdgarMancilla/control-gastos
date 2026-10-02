@@ -17,13 +17,23 @@ const CATEGORIAS = [
   { id: 'otros',      nombre: 'Otros',             icono: '📌' },
 ];
 
+const TIPOS_CUENTA = {
+  banco:    { nombre: 'Banco',    icono: '🏦' },
+  efectivo: { nombre: 'Efectivo', icono: '💵' },
+  tarjeta:  { nombre: 'Tarjeta',  icono: '💳' },
+};
+
 let usuarioActual = null;
 let movimientos = [];
+let cuentas = [];
 let tipoActual = 'ingreso';
 let categoriaActual = 'comida';
+let cuentaActual = null;      // cuenta elegida en el formulario
 let filtroActual = 'todos';
 let mesActual = 'todos';
-let editandoId = null;   // id del movimiento que se está modificando
+let filtroCuenta = 'todas';   // cuenta por la que se filtra la vista
+let editandoId = null;        // movimiento que se está modificando
+let editandoCuentaId = null;  // cuenta que se está modificando
 
 /* ---------- DOM ---------- */
 const $ = (id) => document.getElementById(id);
@@ -103,9 +113,67 @@ function enMes(lista) {
   return mesActual === 'todos' ? lista : lista.filter((m) => mesDe(m) === mesActual);
 }
 
-const visibles = () => enMes(movimientos);
+/* Un traspaso toca dos cuentas: aparece tanto si se filtra por la de
+   origen como por la de destino. */
+function enCuenta(lista) {
+  if (filtroCuenta === 'todas') return lista;
+  return lista.filter((m) => m.tipo === 'transferencia'
+    ? (m.cuentaOrigen === filtroCuenta || m.cuentaDestino === filtroCuenta)
+    : m.cuenta === filtroCuenta);
+}
+
+const visibles = () => enCuenta(enMes(movimientos));
+
+// Los traspasos quedan fuera de los totales a propósito: mover dinero
+// de una cuenta a otra no es ganar ni gastar.
 const soloIngresos = () => visibles().filter((m) => m.tipo === 'ingreso');
 const soloGastos = () => visibles().filter((m) => m.tipo === 'gasto');
+
+/* ---------- Cuentas ---------- */
+
+const buscarCuenta = (id) => cuentas.find((c) => String(c.id) === String(id));
+
+function nombreCuenta(id) {
+  const c = buscarCuenta(id);
+  return c ? c.nombre : 'Sin cuenta';
+}
+
+function iconoCuenta(id) {
+  const c = buscarCuenta(id);
+  return c ? (TIPOS_CUENTA[c.tipo] || TIPOS_CUENTA.banco).icono : '❔';
+}
+
+/* El saldo es acumulado: parte del saldo inicial y recorre TODOS los
+   movimientos, no solo los del mes que se esté viendo. Un saldo que
+   dependiera del filtro no sería el dinero que hay en la cuenta. */
+function saldoDeCuenta(id) {
+  const cuenta = buscarCuenta(id);
+  let saldo = cuenta ? Number(cuenta.saldoInicial) || 0 : 0;
+
+  movimientos.forEach((m) => {
+    if (m.tipo === 'transferencia') {
+      if (String(m.cuentaOrigen) === String(id)) saldo -= m.cantidad;
+      if (String(m.cuentaDestino) === String(id)) saldo += m.cantidad;
+    } else if (String(m.cuenta) === String(id)) {
+      saldo += m.tipo === 'gasto' ? -m.cantidad : m.cantidad;
+    }
+  });
+
+  return saldo;
+}
+
+// Lo que hay en total: la suma de todas las cuentas más lo que pueda
+// quedar en movimientos que todavía no tienen cuenta asignada.
+function saldoTotal() {
+  const enCuentas = cuentas.reduce((s, c) => s + saldoDeCuenta(c.id), 0);
+  const sueltos = sinCuenta().reduce(
+    (s, m) => s + (m.tipo === 'gasto' ? -m.cantidad : m.cantidad), 0);
+  return enCuentas + sueltos;
+}
+
+// Movimientos de antes de que existieran las cuentas.
+const sinCuenta = () => movimientos.filter(
+  (m) => m.tipo !== 'transferencia' && !buscarCuenta(m.cuenta));
 
 // "2026-09" -> "septiembre de 2026"
 function nombreMes(clave) {
@@ -240,6 +308,10 @@ async function alRecuperar() {
 
 function mostrarAcceso() {
   movimientos = [];
+  cuentas = [];
+  cuentaActual = null;
+  filtroCuenta = 'todas';
+  mesActual = 'todos';
 
   $('pantallaAcceso').hidden = false;
   $('app').hidden = true;
@@ -275,11 +347,27 @@ async function abrirSesion(sesion) {
   prepararApp();
 
   try {
-    movimientos = await almacen.listar();
+    [movimientos, cuentas] = await Promise.all([
+      almacen.listar(),
+      almacen.listarCuentas(),
+    ]);
   } catch (error) {
     movimientos = [];
-    alert('No se pudieron leer tus movimientos: ' + error.message);
+    cuentas = [];
+    alert('No se pudieron leer tus datos: ' + error.message);
   }
+
+  // Nadie guarda todo su dinero en el banco: si no hay ninguna cuenta,
+  // se crea "Efectivo" para poder registrar desde el primer momento.
+  if (!cuentas.length) {
+    try {
+      cuentas = [await almacen.agregarCuenta({
+        nombre: 'Efectivo', tipo: 'efectivo', saldoInicial: 0,
+      })];
+    } catch { /* si falla, la sección de cuentas lo pedirá a mano */ }
+  }
+  cuentaActual = cuentas.length ? cuentas[0].id : null;
+
   pintar();
 
   if (rescatadosPendientes) {
@@ -324,7 +412,17 @@ function prepararApp() {
     pintar();
   });
 
+  $('selectorCuenta').addEventListener('change', (e) => {
+    filtroCuenta = e.target.value;
+    pintar();
+  });
+
   $('btnCancelarEdicion').addEventListener('click', cancelarEdicion);
+
+  $('btnNuevaCuenta').addEventListener('click', () => abrirFormCuenta(null));
+  $('btnCancelarCuenta').addEventListener('click', cerrarFormCuenta);
+  $('formCuenta').addEventListener('submit', alGuardarCuenta);
+  $('btnAsignar').addEventListener('click', asignarSueltos);
 
   formulario.addEventListener('submit', alGuardar);
   $('btnTabla').addEventListener('click', alternarTabla);
@@ -352,28 +450,212 @@ function construirFichas() {
   });
 }
 
-/* ---------- Entrada / Salida ---------- */
+/* ---------- Fichas y desplegables de cuenta ----------
+   Se reconstruyen cada vez que cambian las cuentas, cuidando de no
+   perder la que el usuario ya tenía elegida. */
+function pintarCuentasEnFormulario() {
+  const caja = $('fichasCuenta');
+  caja.innerHTML = '';
+
+  // Si la cuenta elegida desapareció, se toma la primera que haya.
+  if (!buscarCuenta(cuentaActual)) cuentaActual = cuentas.length ? cuentas[0].id : null;
+
+  cuentas.forEach((c) => {
+    const ficha = document.createElement('button');
+    ficha.type = 'button';
+    ficha.className = 'ficha' + (String(c.id) === String(cuentaActual) ? ' activa' : '');
+    ficha.dataset.cuenta = c.id;
+    ficha.setAttribute('aria-pressed', String(String(c.id) === String(cuentaActual)));
+    ficha.textContent = (TIPOS_CUENTA[c.tipo] || TIPOS_CUENTA.banco).icono + ' ' + c.nombre;
+
+    ficha.addEventListener('click', () => {
+      cuentaActual = c.id;
+      marcarFichaCuenta(c.id);
+    });
+
+    caja.appendChild(ficha);
+  });
+
+  $('pistaSinCuentas').hidden = cuentas.length > 0;
+
+  // Los desplegables del traspaso y el de asignación masiva.
+  ['traspasoOrigen', 'traspasoDestino', 'cuentaDestinoAsignar'].forEach((id) => {
+    const sel = $(id);
+    const elegido = sel.value;
+    sel.innerHTML = '';
+    cuentas.forEach((c) => {
+      const op = document.createElement('option');
+      op.value = c.id;
+      op.textContent = (TIPOS_CUENTA[c.tipo] || TIPOS_CUENTA.banco).icono + '  ' + c.nombre;
+      sel.appendChild(op);
+    });
+    if (elegido && buscarCuenta(elegido)) sel.value = elegido;
+  });
+
+  // Por comodidad, el destino arranca en una cuenta distinta al origen.
+  if (cuentas.length > 1 && $('traspasoDestino').value === $('traspasoOrigen').value) {
+    $('traspasoDestino').value = cuentas[1].id;
+  }
+}
+
+function marcarFichaCuenta(id) {
+  $('fichasCuenta').querySelectorAll('.ficha').forEach((f) => {
+    const activa = String(f.dataset.cuenta) === String(id);
+    f.classList.toggle('activa', activa);
+    f.setAttribute('aria-pressed', String(activa));
+  });
+}
+
+/* ---------- Alta y edición de cuentas ---------- */
+
+function abrirFormCuenta(cuenta) {
+  editandoCuentaId = cuenta ? cuenta.id : null;
+
+  $('cuentaNombre').value = cuenta ? cuenta.nombre : '';
+  $('cuentaTipo').value = cuenta ? cuenta.tipo : 'banco';
+  $('cuentaSaldo').value = cuenta ? cuenta.saldoInicial : '';
+
+  $('btnGuardarCuenta').textContent = cuenta ? 'Guardar cambios' : 'Guardar cuenta';
+  $('formCuenta').hidden = false;
+  $('cuentaNombre').focus();
+}
+
+function cerrarFormCuenta() {
+  editandoCuentaId = null;
+  $('formCuenta').reset();
+  $('formCuenta').hidden = true;
+}
+
+async function alGuardarCuenta(e) {
+  e.preventDefault();
+
+  const nombre = $('cuentaNombre').value.trim();
+  if (!nombre) return;
+
+  const datos = {
+    nombre: nombre,
+    tipo: $('cuentaTipo').value,
+    // Vacío significa empezar en cero.
+    saldoInicial: parseFloat($('cuentaSaldo').value) || 0,
+  };
+
+  const idEditada = editandoCuentaId;
+  const respaldo = cuentas;
+  cerrarFormCuenta();
+
+  try {
+    if (idEditada) {
+      const guardada = await almacen.actualizarCuenta(idEditada, datos);
+      cuentas = cuentas.map((c) => (String(c.id) === String(idEditada) ? guardada : c));
+    } else {
+      cuentas = [...cuentas, await almacen.agregarCuenta(datos)];
+      // La primera cuenta queda elegida en el formulario de captura.
+      if (cuentas.length === 1) cuentaActual = cuentas[0].id;
+    }
+    pintar();
+  } catch (error) {
+    cuentas = respaldo;
+    pintar();
+    alert('No se pudo guardar la cuenta: ' + error.message);
+  }
+}
+
+async function borrarCuenta(cuenta) {
+  const usos = movimientos.filter((m) => m.tipo === 'transferencia'
+    ? (String(m.cuentaOrigen) === String(cuenta.id) || String(m.cuentaDestino) === String(cuenta.id))
+    : String(m.cuenta) === String(cuenta.id)).length;
+
+  const aviso = usos
+    ? 'La cuenta "' + cuenta.nombre + '" tiene ' + usos + ' movimientos.\n\n' +
+      'Si la eliminas, esos movimientos se quedan sin cuenta (no se borran), ' +
+      'y podrás reasignarlos después. ¿Continuar?'
+    : '¿Eliminar la cuenta "' + cuenta.nombre + '"?';
+
+  if (!confirm(aviso)) return;
+
+  const respaldo = cuentas;
+  cuentas = cuentas.filter((c) => String(c.id) !== String(cuenta.id));
+  if (String(filtroCuenta) === String(cuenta.id)) filtroCuenta = 'todas';
+  pintar();
+
+  try {
+    await almacen.borrarCuenta(cuenta.id);
+  } catch (error) {
+    cuentas = respaldo;
+    pintar();
+    alert('No se pudo eliminar la cuenta: ' + error.message);
+  }
+}
+
+/* Asigna de golpe los movimientos que quedaron sin cuenta, para no
+   tener que editarlos uno por uno. */
+async function asignarSueltos() {
+  const destino = $('cuentaDestinoAsignar').value;
+  if (!destino) return;
+
+  const pendientes = sinCuenta();
+  if (!pendientes.length) return;
+
+  if (!confirm('Se asignarán ' + pendientes.length + ' movimientos a "' +
+    nombreCuenta(destino) + '". ¿Continuar?')) return;
+
+  const boton = $('btnAsignar');
+  boton.disabled = true;
+  boton.textContent = 'Asignando…';
+
+  let fallidos = 0;
+  for (const m of pendientes) {
+    try {
+      const { id, ...datos } = m;
+      const guardado = await almacen.actualizar(id, { ...datos, cuenta: destino });
+      movimientos = movimientos.map((x) => (String(x.id) === String(id) ? guardado : x));
+    } catch {
+      fallidos++;
+    }
+  }
+
+  boton.disabled = false;
+  boton.textContent = 'Asignarlos';
+  pintar();
+
+  if (fallidos) alert('Quedaron ' + fallidos + ' movimientos sin asignar.');
+}
+
+/* ---------- Entrada / Salida / Traspaso ---------- */
 function cambiarTipo(tipo) {
   tipoActual = tipo;
   const esGasto = tipo === 'gasto';
+  const esTraspaso = tipo === 'transferencia';
 
   document.querySelectorAll('#segmento .seg-opcion').forEach((b) =>
     b.classList.toggle('activa', b.dataset.tipo === tipo)
   );
-  segIndicador.classList.toggle('derecha', esGasto);
+  segIndicador.classList.toggle('medio', esGasto);
+  segIndicador.classList.toggle('ultimo', esTraspaso);
 
   bloqueGasto.classList.toggle('abierto', esGasto);
   inpMotivo.required = esGasto;
 
-  $('tituloNombre').textContent = esGasto ? 'Nombre del gasto' : 'Concepto';
-  inpNombre.placeholder = esGasto ? 'Ej. Recibo de luz' : 'Ej. Venta del día';
+  // En un traspaso no hay "una" cuenta, sino origen y destino.
+  $('bloqueTraspaso').classList.toggle('abierto', esTraspaso);
+  $('grupoCuenta').hidden = esTraspaso;
+  $('tituloCuenta').textContent = esGasto ? '¿De qué cuenta sale?' : '¿A qué cuenta entra?';
+
+  $('tituloNombre').textContent = esTraspaso
+    ? 'Concepto del traspaso'
+    : (esGasto ? 'Nombre del gasto' : 'Concepto');
+  inpNombre.placeholder = esTraspaso
+    ? 'Ej. Retiro del cajero'
+    : (esGasto ? 'Ej. Recibo de luz' : 'Ej. Venta del día');
 
   // Durante una edición el botón conserva su texto aunque se cambie
   // de entrada a salida: lo que se hace sigue siendo guardar cambios.
   botonGuardar.textContent = editandoId
     ? 'Guardar cambios'
-    : (esGasto ? 'Registrar salida' : 'Registrar entrada');
+    : (esTraspaso ? 'Registrar traspaso'
+      : (esGasto ? 'Registrar salida' : 'Registrar entrada'));
   botonGuardar.classList.toggle('salida', esGasto);
+  botonGuardar.classList.toggle('neutro', esTraspaso);
 }
 
 /* ---------- Alta y modificación ---------- */
@@ -397,17 +679,40 @@ async function alGuardar(e) {
     nombre: inpNombre.value.trim(),
   };
 
-  if (tipoActual === 'gasto') {
-    const motivo = inpMotivo.value.trim();
-    if (!motivo) {
-      inpMotivo.focus();
-      return;
+  if (tipoActual === 'transferencia') {
+    const origen = $('traspasoOrigen').value;
+    const destino = $('traspasoDestino').value;
+
+    if (!origen || !destino) {
+      return alert('Elige de qué cuenta sale el dinero y a cuál entra.');
     }
-    mov.categoria = categoriaActual;
-    mov.motivo = motivo;
-    if (!mov.nombre) mov.nombre = buscarCategoria(mov.categoria).nombre;
-  } else if (!mov.nombre) {
-    mov.nombre = 'Entrada';
+    if (origen === destino) {
+      return alert('Un traspaso tiene que ir de una cuenta a otra distinta.');
+    }
+
+    mov.cuentaOrigen = origen;
+    mov.cuentaDestino = destino;
+    if (!mov.nombre) {
+      mov.nombre = 'De ' + nombreCuenta(origen) + ' a ' + nombreCuenta(destino);
+    }
+  } else {
+    if (!cuentaActual) {
+      return alert('Elige en qué cuenta entra o de cuál sale el dinero.');
+    }
+    mov.cuenta = cuentaActual;
+
+    if (tipoActual === 'gasto') {
+      const motivo = inpMotivo.value.trim();
+      if (!motivo) {
+        inpMotivo.focus();
+        return;
+      }
+      mov.categoria = categoriaActual;
+      mov.motivo = motivo;
+      if (!mov.nombre) mov.nombre = buscarCategoria(mov.categoria).nombre;
+    } else if (!mov.nombre) {
+      mov.nombre = 'Entrada';
+    }
   }
 
   const idEditado = editandoId;
@@ -452,10 +757,19 @@ function editar(id) {
   inpNombre.value = nombreDe(mov);
   inpFecha.value = mov.fecha;
 
-  if (mov.tipo === 'gasto') {
-    categoriaActual = mov.categoria || 'otros';
-    marcarFicha(categoriaActual);
-    inpMotivo.value = mov.motivo || '';
+  if (mov.tipo === 'transferencia') {
+    $('traspasoOrigen').value = mov.cuentaOrigen;
+    $('traspasoDestino').value = mov.cuentaDestino;
+  } else {
+    if (buscarCuenta(mov.cuenta)) {
+      cuentaActual = mov.cuenta;
+      marcarFichaCuenta(cuentaActual);
+    }
+    if (mov.tipo === 'gasto') {
+      categoriaActual = mov.categoria || 'otros';
+      marcarFicha(categoriaActual);
+      inpMotivo.value = mov.motivo || '';
+    }
   }
 
   $('nombreEditado').textContent = nombreDe(mov);
@@ -511,10 +825,113 @@ async function eliminar(id) {
 
 /* ---------- Pintado ---------- */
 function pintar() {
+  pintarCuentasEnFormulario();
   pintarSelectorMes();
+  pintarSelectorCuenta();
+  pintarCuentas();
   pintarTotales();
   pintarHistorial();
   pintarGrafica();
+}
+
+function pintarSelectorCuenta() {
+  const selector = $('selectorCuenta');
+
+  if (!buscarCuenta(filtroCuenta)) filtroCuenta = 'todas';
+
+  selector.innerHTML = '';
+  const todas = document.createElement('option');
+  todas.value = 'todas';
+  todas.textContent = 'Todas las cuentas';
+  selector.appendChild(todas);
+
+  cuentas.forEach((c) => {
+    const op = document.createElement('option');
+    op.value = c.id;
+    op.textContent = (TIPOS_CUENTA[c.tipo] || TIPOS_CUENTA.banco).icono + '  ' + c.nombre;
+    selector.appendChild(op);
+  });
+
+  selector.value = filtroCuenta;
+  selector.hidden = cuentas.length < 2;   // con una sola no hay nada que elegir
+}
+
+/* Saldo de cada cuenta, en barras. La escala es contra el saldo mayor,
+   y cada barra lleva su cifra escrita al lado. */
+function pintarCuentas() {
+  const cont = $('graficaCuentas');
+  cont.innerHTML = '';
+
+  $('sinCuentas').hidden = cuentas.length > 0;
+
+  const pendientes = sinCuenta();
+  $('avisoSinAsignar').hidden = !(pendientes.length && cuentas.length);
+  if (pendientes.length && cuentas.length) {
+    const uno = pendientes.length === 1;
+    $('textoSinAsignar').textContent = 'Hay ' + pendientes.length +
+      (uno ? ' movimiento registrado' : ' movimientos registrados') +
+      ' antes de que existieran las cuentas. ¿A cuál ' +
+      (uno ? 'pertenece?' : 'pertenecen?');
+  }
+
+  if (!cuentas.length) return;
+
+  const saldos = cuentas.map((c) => ({ cuenta: c, saldo: saldoDeCuenta(c.id) }));
+  const mayor = Math.max(...saldos.map((s) => Math.abs(s.saldo)), 1);
+
+  saldos.forEach(({ cuenta, saldo }) => {
+    const fila = document.createElement('div');
+    fila.className = 'cuenta-fila';
+
+    const encabezado = document.createElement('div');
+    encabezado.className = 'cuenta-encabezado';
+
+    const nombre = document.createElement('span');
+    nombre.className = 'cuenta-nombre';
+    const texto = document.createElement('span');
+    texto.textContent = (TIPOS_CUENTA[cuenta.tipo] || TIPOS_CUENTA.banco).icono +
+      ' ' + cuenta.nombre;
+    nombre.appendChild(texto);
+
+    const derecha = document.createElement('div');
+    derecha.className = 'cuenta-derecha';
+
+    const monto = document.createElement('span');
+    monto.className = 'cuenta-saldo' + (saldo < 0 ? ' negativo' : '');
+    monto.textContent = dinero(saldo);
+
+    const editar = document.createElement('button');
+    editar.className = 'mov-accion';
+    editar.type = 'button';
+    editar.textContent = '✏️';
+    editar.title = 'Editar cuenta';
+    editar.setAttribute('aria-label', 'Editar ' + cuenta.nombre);
+    editar.addEventListener('click', () => abrirFormCuenta(cuenta));
+
+    const quitar = document.createElement('button');
+    quitar.className = 'mov-accion';
+    quitar.type = 'button';
+    quitar.textContent = '🗑️';
+    quitar.title = 'Eliminar cuenta';
+    quitar.setAttribute('aria-label', 'Eliminar ' + cuenta.nombre);
+    quitar.addEventListener('click', () => borrarCuenta(cuenta));
+
+    derecha.append(monto, editar, quitar);
+    encabezado.append(nombre, derecha);
+
+    const riel = document.createElement('div');
+    riel.className = 'barra-riel';
+
+    const relleno = document.createElement('div');
+    relleno.className = 'barra-relleno';
+    relleno.style.width = (Math.abs(saldo) / mayor) * 100 + '%';
+    // En rojo solo si la cuenta está en números rojos.
+    relleno.style.background = saldo < 0 ? 'var(--sale-dato)' : 'var(--entra-dato)';
+
+    riel.appendChild(relleno);
+    fila.append(encabezado, riel);
+    cont.appendChild(fila);
+  });
 }
 
 /* El desplegable solo ofrece meses que tienen movimientos: no tiene
@@ -548,23 +965,36 @@ function pintarTotales() {
   const gastos = sumar(soloGastos());
   const saldo = ingresos - gastos;
 
-  const cifra = $('saldoTotal');
-  cifra.textContent = dinero(saldo);
-  cifra.classList.toggle('negativo', saldo < 0);
-
-  // Con un mes elegido, la cifra grande es el balance de ese mes;
-  // el saldo de verdad se enseña aparte para no confundirlos.
   const porMes = mesActual !== 'todos';
-  $('etiquetaCifra').textContent = porMes
-    ? 'Balance de ' + nombreMes(mesActual)
-    : 'Saldo disponible';
+  const porCuenta = filtroCuenta !== 'todas';
 
-  $('parSaldoTotal').hidden = !porMes;
+  /* Sin filtro de mes, la cifra grande es dinero que existe: saldos
+     iniciales incluidos. Con un mes elegido pasa a ser el movimiento
+     neto de ese mes, que es otra cosa, y por eso cambia la etiqueta. */
+  let cifra;
+  let etiqueta;
+
   if (porMes) {
-    const total = sumar(movimientos.filter((m) => m.tipo === 'ingreso')) -
-      sumar(movimientos.filter((m) => m.tipo === 'gasto'));
-    $('saldoGeneral').textContent = dinero(total);
+    cifra = saldo;
+    etiqueta = porCuenta
+      ? 'Balance de ' + nombreMes(mesActual) + ' en ' + nombreCuenta(filtroCuenta)
+      : 'Balance de ' + nombreMes(mesActual);
+  } else if (porCuenta) {
+    cifra = saldoDeCuenta(filtroCuenta);
+    etiqueta = 'Saldo en ' + nombreCuenta(filtroCuenta);
+  } else {
+    cifra = saldoTotal();
+    etiqueta = 'Saldo disponible';
   }
+
+  const nodo = $('saldoTotal');
+  nodo.textContent = dinero(cifra);
+  nodo.classList.toggle('negativo', cifra < 0);
+  $('etiquetaCifra').textContent = etiqueta;
+
+  // Mientras haya un filtro puesto, el total de todo se enseña aparte.
+  $('parSaldoTotal').hidden = !(porMes || porCuenta);
+  $('saldoGeneral').textContent = dinero(saldoTotal());
 
   $('totalIngresos').textContent = dinero(ingresos);
   $('totalGastos').textContent = dinero(gastos);
@@ -617,6 +1047,7 @@ function pintarHistorial() {
 
 function filaMovimiento(m) {
   const esGasto = m.tipo === 'gasto';
+  const esTraspaso = m.tipo === 'transferencia';
   const cat = esGasto ? buscarCategoria(m.categoria) : null;
 
   const fila = document.createElement('article');
@@ -624,7 +1055,7 @@ function filaMovimiento(m) {
 
   const marca = document.createElement('div');
   marca.className = 'mov-marca';
-  marca.textContent = esGasto ? cat.icono : '💵';
+  marca.textContent = esTraspaso ? '🔄' : (esGasto ? cat.icono : '💵');
 
   const cuerpo = document.createElement('div');
   cuerpo.className = 'mov-cuerpo';
@@ -633,17 +1064,24 @@ function filaMovimiento(m) {
   nombre.className = 'mov-nombre';
   nombre.textContent = nombreDe(m);
 
+  // Segunda línea: de dónde viene o a dónde va el dinero, y la hora.
   const seccion = document.createElement('div');
   seccion.className = 'mov-seccion';
-  seccion.textContent = esGasto
-    ? cat.nombre + '  ·  ' + horaLegible(m)
-    : 'Entrada  ·  ' + horaLegible(m);
+  if (esTraspaso) {
+    seccion.textContent = nombreCuenta(m.cuentaOrigen) + ' → ' +
+      nombreCuenta(m.cuentaDestino) + '  ·  ' + horaLegible(m);
+  } else {
+    const donde = iconoCuenta(m.cuenta) + ' ' + nombreCuenta(m.cuenta);
+    seccion.textContent = (esGasto ? cat.nombre : 'Entrada') +
+      '  ·  ' + donde + '  ·  ' + horaLegible(m);
+  }
 
   cuerpo.append(nombre, seccion);
 
   const monto = document.createElement('div');
   monto.className = 'mov-monto';
-  monto.textContent = (esGasto ? '−' : '+') + dinero(m.cantidad);
+  // Un traspaso no suma ni resta: no lleva signo.
+  monto.textContent = (esTraspaso ? '' : (esGasto ? '−' : '+')) + dinero(m.cantidad);
 
   const acciones = document.createElement('div');
   acciones.className = 'mov-acciones';
@@ -858,7 +1296,7 @@ function exportarExcel() {
 
   /* Hoja 2: Movimientos con detalle */
   const filas = [[
-    '#', 'Fecha', 'Hora de registro', 'Tipo', 'Seccion / Categoria',
+    '#', 'Fecha', 'Hora de registro', 'Tipo', 'Cuenta', 'Seccion / Categoria',
     'Nombre', 'Motivo de la salida', 'Entrada', 'Salida', 'Saldo acumulado',
   ]];
 
@@ -868,32 +1306,58 @@ function exportarExcel() {
     .sort((a, b) => a.fecha.localeCompare(b.fecha) || momentoDe(a) - momentoDe(b))
     .forEach((m, i) => {
       const esGasto = m.tipo === 'gasto';
-      saldo += esGasto ? -m.cantidad : m.cantidad;
+      const esTraspaso = m.tipo === 'transferencia';
+
+      // El traspaso no altera el saldo: el dinero solo cambia de sitio.
+      if (!esTraspaso) saldo += esGasto ? -m.cantidad : m.cantidad;
+
       filas.push([
         i + 1,
         m.fecha,
         horaLegible(m),
-        esGasto ? 'Salida' : 'Entrada',
+        esTraspaso ? 'Traspaso' : (esGasto ? 'Salida' : 'Entrada'),
+        esTraspaso
+          ? nombreCuenta(m.cuentaOrigen) + ' -> ' + nombreCuenta(m.cuentaDestino)
+          : nombreCuenta(m.cuenta),
         esGasto ? buscarCategoria(m.categoria).nombre : '',
         nombreDe(m),
         esGasto ? m.motivo || '' : '',
-        esGasto ? null : m.cantidad,
+        esGasto || esTraspaso ? null : m.cantidad,
         esGasto ? m.cantidad : null,
         saldo,
       ]);
     });
 
   filas.push([]);
-  filas.push(['', '', '', '', '', '', 'TOTALES', ingresos, gastos, ingresos - gastos]);
+  filas.push(['', '', '', '', '', '', '', 'TOTALES', ingresos, gastos, ingresos - gastos]);
 
   const hojaMov = XLSX.utils.aoa_to_sheet(filas);
   hojaMov['!cols'] = [
-    { wch: 5 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 22 },
+    { wch: 5 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 26 }, { wch: 22 },
     { wch: 30 }, { wch: 48 }, { wch: 14 }, { wch: 14 }, { wch: 17 },
   ];
-  ['H', 'I', 'J'].forEach((c) => formatearColumna(hojaMov, c, FMT_MONEDA));
-  hojaMov['!autofilter'] = { ref: 'A1:J' + (filas.length - 2) };
+  ['I', 'J', 'K'].forEach((c) => formatearColumna(hojaMov, c, FMT_MONEDA));
+  hojaMov['!autofilter'] = { ref: 'A1:K' + (filas.length - 2) };
   XLSX.utils.book_append_sheet(libro, hojaMov, 'Movimientos');
+
+  /* Hoja 3: saldo de cada cuenta */
+  if (cuentas.length) {
+    const filasCuentas = [['Cuenta', 'Tipo', 'Saldo inicial', 'Saldo actual']];
+    cuentas.forEach((c) => {
+      filasCuentas.push([
+        c.nombre,
+        (TIPOS_CUENTA[c.tipo] || TIPOS_CUENTA.banco).nombre,
+        Number(c.saldoInicial) || 0,
+        saldoDeCuenta(c.id),
+      ]);
+    });
+    filasCuentas.push(['TOTAL', '', '', saldoTotal()]);
+
+    const hojaCuentas = XLSX.utils.aoa_to_sheet(filasCuentas);
+    hojaCuentas['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 15 }, { wch: 15 }];
+    ['C', 'D'].forEach((c) => formatearColumna(hojaCuentas, c, FMT_MONEDA));
+    XLSX.utils.book_append_sheet(libro, hojaCuentas, 'Cuentas');
+  }
 
   /* Hoja 3: Salidas por seccion */
   const filasCat = [['Seccion', 'Total gastado', '% del gasto', 'Movimientos']];
@@ -918,7 +1382,7 @@ function exportarCSV() {
   }
 
   const filas = [[
-    'Fecha', 'Hora de registro', 'Tipo', 'Seccion / Categoria',
+    'Fecha', 'Hora de registro', 'Tipo', 'Cuenta', 'Seccion / Categoria',
     'Nombre', 'Motivo de la salida', 'Cantidad',
   ]];
 
@@ -927,10 +1391,14 @@ function exportarCSV() {
     .sort((a, b) => a.fecha.localeCompare(b.fecha) || momentoDe(a) - momentoDe(b))
     .forEach((m) => {
       const esGasto = m.tipo === 'gasto';
+      const esTraspaso = m.tipo === 'transferencia';
       filas.push([
         m.fecha,
         horaLegible(m),
-        esGasto ? 'Salida' : 'Entrada',
+        esTraspaso ? 'Traspaso' : (esGasto ? 'Salida' : 'Entrada'),
+        esTraspaso
+          ? nombreCuenta(m.cuentaOrigen) + ' -> ' + nombreCuenta(m.cuentaDestino)
+          : nombreCuenta(m.cuenta),
         esGasto ? buscarCategoria(m.categoria).nombre : '',
         nombreDe(m),
         esGasto ? m.motivo || '' : '',
@@ -970,7 +1438,7 @@ async function arrancar() {
   $('btnAcceder').disabled = true;
   $('btnAcceder').textContent = 'Cargando…';
 
-  const { almacen: elegido, aviso } = await crearAlmacen();
+  const { almacen: elegido, aviso, esPrueba } = await crearAlmacen();
   almacen = elegido;
 
   $('btnAcceder').disabled = false;
@@ -978,10 +1446,16 @@ async function arrancar() {
 
   // Deja ver de dónde salen los datos, para no confundir "modo local"
   // con "ya está en la nube".
-  $('insigniaModo').textContent = almacen.modo === 'firebase'
-    ? 'Conectado a Firebase'
-    : 'Modo local (este navegador)';
-  $('insigniaModo').classList.toggle('local', almacen.modo === 'local');
+  const insignia = $('insigniaModo');
+  if (almacen.modo === 'firebase') {
+    insignia.textContent = 'Conectado a Firebase';
+  } else if (esPrueba) {
+    insignia.textContent = 'Modo de prueba · no se guarda en la nube';
+  } else {
+    insignia.textContent = 'Modo local (este navegador)';
+  }
+  insignia.classList.toggle('local', almacen.modo === 'local' && !esPrueba);
+  insignia.classList.toggle('prueba', esPrueba);
 
   if (aviso) {
     avisar(aviso);

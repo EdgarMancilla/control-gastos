@@ -18,26 +18,59 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Los movimientos viven en  usuarios/{uid}/movimientos/{id}
-    // El {uid} es el identificador que Firebase le da a cada cuenta.
-    match /usuarios/{uid}/movimientos/{movimiento} {
+    match /usuarios/{uid} {
 
-      // Solo el dueño, y solo con la sesión iniciada.
-      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      // Solo el dueno de la carpeta, y solo con la sesion iniciada.
+      function esDueno() {
+        return request.auth != null && request.auth.uid == uid;
+      }
 
-      // Al escribir, además se revisa que el dato tenga buena forma:
-      // así un error de la página no mete basura en la base.
-      allow create, update: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.data.tipo in ['ingreso', 'gasto']
-        && request.resource.data.cantidad is number
-        && request.resource.data.cantidad > 0
-        && request.resource.data.fecha is string
-        && request.resource.data.nombre is string
-        // El motivo es obligatorio en las salidas de dinero.
-        && (request.resource.data.tipo == 'ingreso'
-            || (request.resource.data.motivo is string
-                && request.resource.data.motivo.size() > 0));
+      function datos() {
+        return request.resource.data;
+      }
+
+      // Cada tipo de movimiento exige sus propios campos.
+      function formaCorrecta() {
+        return datos().tipo == 'transferencia'
+          // Mover dinero: de una cuenta a otra, y no a si misma.
+          ? (datos().cuentaOrigen is string
+             && datos().cuentaDestino is string
+             && datos().cuentaOrigen != datos().cuentaDestino)
+          // Entrada o salida: siempre se sabe en que cuenta cae.
+          : (datos().cuenta is string
+             && datos().cuenta.size() > 0
+             // El motivo es obligatorio en las salidas de dinero.
+             && (datos().tipo == 'ingreso'
+                 || (datos().motivo is string && datos().motivo.size() > 0)));
+      }
+
+      /* --- Cuentas donde se guarda el dinero --- */
+      match /cuentas/{cuenta} {
+        allow read, delete: if esDueno();
+
+        allow create, update: if esDueno()
+          && datos().nombre is string
+          && datos().nombre.size() > 0
+          && datos().nombre.size() <= 40
+          && datos().tipo in ['banco', 'efectivo', 'tarjeta']
+          // El saldo inicial puede ser negativo (una tarjeta con deuda).
+          && datos().saldoInicial is number;
+      }
+
+      /* --- Movimientos: entradas, salidas y transferencias --- */
+      match /movimientos/{movimiento} {
+        allow read, delete: if esDueno();
+
+        // Al escribir se revisa que el dato tenga buena forma: asi un
+        // error de la pagina no mete basura en la base.
+        allow create, update: if esDueno()
+          && datos().tipo in ['ingreso', 'gasto', 'transferencia']
+          && datos().cantidad is number
+          && datos().cantidad > 0
+          && datos().fecha is string
+          && datos().nombre is string
+          && formaCorrecta();
+      }
     }
 
     // Todo lo demás queda cerrado. Sin esta línea, una colección

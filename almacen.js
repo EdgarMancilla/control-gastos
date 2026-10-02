@@ -17,6 +17,11 @@
      actualizar(id, cambios)   -> movimiento ya modificado
      borrar(id)
 
+     listarCuentas()           -> [cuentas donde se guarda el dinero]
+     agregarCuenta(cuenta)     -> cuenta guardada (con su id)
+     actualizarCuenta(id, c)   -> cuenta ya modificada
+     borrarCuenta(id)
+
    Las que pueden fallar devuelven { ok, mensaje }. */
 
 import { configFirebase, hayConfigFirebase, VERSION_FIREBASE } from './firebase-config.js';
@@ -84,8 +89,11 @@ async function crearAlmacenFirebase() {
     db = dbMod.getFirestore(app);
   }
 
-  const coleccion = () =>
-    dbMod.collection(db, 'usuarios', auth.currentUser.uid, 'movimientos');
+  const coleccion = (nombre = 'movimientos') =>
+    dbMod.collection(db, 'usuarios', auth.currentUser.uid, nombre);
+
+  const documento = (nombre, id) =>
+    dbMod.doc(db, 'usuarios', auth.currentUser.uid, nombre, String(id));
 
   return {
     modo: 'firebase',
@@ -142,17 +150,37 @@ async function crearAlmacenFirebase() {
     async actualizar(id, cambios) {
       // El id no viaja dentro del documento: identifica, no es un dato.
       const { id: _, ...datos } = cambios;
-      const referencia = dbMod.doc(db, 'usuarios', auth.currentUser.uid, 'movimientos', String(id));
       // setDoc reemplaza el documento entero, para que al pasar de
       // salida a entrada no queden colgando la categoria y el motivo.
-      await dbMod.setDoc(referencia, datos);
+      await dbMod.setDoc(documento('movimientos', id), datos);
       return { ...datos, id };
     },
 
     async borrar(id) {
-      await dbMod.deleteDoc(
-        dbMod.doc(db, 'usuarios', auth.currentUser.uid, 'movimientos', String(id))
-      );
+      await dbMod.deleteDoc(documento('movimientos', id));
+    },
+
+    /* --- Cuentas donde se guarda el dinero --- */
+
+    async listarCuentas() {
+      const captura = await dbMod.getDocs(coleccion('cuentas'));
+      return captura.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+
+    async agregarCuenta(cuenta) {
+      const { id, ...datos } = cuenta;
+      const ref = await dbMod.addDoc(coleccion('cuentas'), datos);
+      return { ...datos, id: ref.id };
+    },
+
+    async actualizarCuenta(id, cambios) {
+      const { id: _, ...datos } = cambios;
+      await dbMod.setDoc(documento('cuentas', id), datos);
+      return { ...datos, id };
+    },
+
+    async borrarCuenta(id) {
+      await dbMod.deleteDoc(documento('cuentas', id));
     },
   };
 }
@@ -169,6 +197,7 @@ const CLAVE_MIGRACION = 'migracion_v2';
 const ITERACIONES = 150000;
 
 const claveDatos = (id) => 'movimientos_v2::' + id;
+const claveCuentas = (id) => 'cuentas_datos_v1::' + id;
 
 function leerJSON(clave, porDefecto) {
   try {
@@ -337,6 +366,37 @@ function crearAlmacenLocal() {
       const lista = await this.listar();
       escribirJSON(claveDatos(sesion.id), lista.filter((m) => String(m.id) !== String(id)));
     },
+
+    /* --- Cuentas donde se guarda el dinero --- */
+
+    async listarCuentas() {
+      if (!sesion) return [];
+      const datos = leerJSON(claveCuentas(sesion.id), []);
+      return Array.isArray(datos) ? datos : [];
+    },
+
+    async agregarCuenta(cuenta) {
+      const lista = await this.listarCuentas();
+      const guardada = { ...cuenta, id: cuenta.id || 'c' + Date.now() };
+      lista.push(guardada);
+      escribirJSON(claveCuentas(sesion.id), lista);
+      return guardada;
+    },
+
+    async actualizarCuenta(id, cambios) {
+      const lista = await this.listarCuentas();
+      const actualizada = { ...cambios, id };
+      escribirJSON(
+        claveCuentas(sesion.id),
+        lista.map((c) => (String(c.id) === String(id) ? actualizada : c))
+      );
+      return actualizada;
+    },
+
+    async borrarCuenta(id) {
+      const lista = await this.listarCuentas();
+      escribirJSON(claveCuentas(sesion.id), lista.filter((c) => String(c.id) !== String(id)));
+    },
   };
 }
 
@@ -344,13 +404,32 @@ function crearAlmacenLocal() {
    Si Firebase está configurado se usa; si falla al cargar, se avisa
    y se sigue en local en lugar de dejar la página muerta. */
 
+/* Abrir la página con ?local al final de la dirección fuerza el modo
+   local aunque Firebase esté configurado. Sirve para probar cambios
+   sin tocar los datos de verdad: lo que captures ahí se queda en este
+   navegador y no sube a ningún lado.
+
+       http://localhost:3000/?local                                  */
+function pidenModoLocal() {
+  try {
+    return new URLSearchParams(location.search).has('local');
+  } catch {
+    return false;
+  }
+}
+
 export async function crearAlmacen() {
-  if (!hayConfigFirebase()) {
-    return { almacen: crearAlmacenLocal(), aviso: null };
+  // Estar en local con Firebase configurado significa que se pidió a
+  // propósito: conviene avisarlo distinto, para que nadie capture algo
+  // de verdad creyendo que se está guardando en la nube.
+  const esPrueba = pidenModoLocal() && hayConfigFirebase();
+
+  if (pidenModoLocal() || !hayConfigFirebase()) {
+    return { almacen: crearAlmacenLocal(), aviso: null, esPrueba };
   }
   try {
-    return { almacen: await crearAlmacenFirebase(), aviso: null };
+    return { almacen: await crearAlmacenFirebase(), aviso: null, esPrueba: false };
   } catch (error) {
-    return { almacen: crearAlmacenLocal(), aviso: error.message };
+    return { almacen: crearAlmacenLocal(), aviso: error.message, esPrueba: false };
   }
 }

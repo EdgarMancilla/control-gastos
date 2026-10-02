@@ -41,6 +41,8 @@
   /* Rellenos solidos y el color que va encima de ellos */
   --relleno-entra: #0f7a55;
   --relleno-sale: #b8441a;
+  --relleno-neutro: #1f63b8;   /* traspasos: ni entra ni sale */
+  --neutro-texto: #1f63b8;
   --sobre-relleno: #ffffff;
 
   /* Ficha seleccionada: invierte respecto al fondo */
@@ -55,6 +57,9 @@
   --respiro: clamp(1.1rem, 0.7rem + 1.6vw, 2rem);
   --radio: clamp(14px, 1.2vw, 22px);
   --radio-chico: 10px;
+
+  /* Altura común de los campos, para que ninguno desentone */
+  --alto-campo: 52px;
 
   --sombra: 0 1px 2px rgba(28, 25, 20, .04), 0 8px 24px -12px rgba(28, 25, 20, .16);
   --curva: cubic-bezier(.22, 1, .36, 1);
@@ -86,6 +91,8 @@
 
     --relleno-entra: #48d9a2;
     --relleno-sale: #ff9d75;
+    --relleno-neutro: #7fb4f5;
+    --neutro-texto: #7fb4f5;
     --sobre-relleno: #0b0b0b;
 
     --ficha-fondo: #f7f7f3;
@@ -121,6 +128,8 @@
 
   --relleno-entra: #48d9a2;
   --relleno-sale: #ff9d75;
+  --relleno-neutro: #7fb4f5;
+  --neutro-texto: #7fb4f5;
   --sobre-relleno: #0b0b0b;
 
   --ficha-fondo: #f7f7f3;
@@ -267,6 +276,10 @@ button { font: inherit; cursor: pointer; }
   background: var(--relleno-sale);
   box-shadow: 0 6px 18px -10px color-mix(in srgb, var(--relleno-sale) 70%, black);
 }
+.boton-accion.neutro {
+  background: var(--relleno-neutro);
+  box-shadow: 0 6px 18px -10px color-mix(in srgb, var(--relleno-neutro) 70%, black);
+}
 
 :where(button, input, select, textarea):focus-visible {
   outline: 2px solid var(--acento);
@@ -359,6 +372,13 @@ button { font: inherit; cursor: pointer; }
   color: var(--tinta-2);
 }
 
+/* El modo de prueba se pidió a propósito y no guarda nada: tiene que
+   verse de lejos, para no capturar algo real por descuido. */
+.insignia-modo.prueba {
+  background: color-mix(in srgb, var(--sale-texto) 16%, transparent);
+  color: var(--sale-texto);
+}
+
 /* Usuario con la sesión iniciada */
 .chip-usuario {
   display: inline-flex;
@@ -414,6 +434,8 @@ button { font: inherit; cursor: pointer; }
   flex-wrap: wrap;
   gap: var(--hueco);
 }
+
+.selectores { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
 
 .selector-mes select {
   width: auto;
@@ -517,6 +539,12 @@ button { font: inherit; cursor: pointer; }
 }
 .seg-indicador.derecha { transform: translateX(100%); background: var(--relleno-sale); }
 
+/* Tres opciones: la pastilla mide un tercio y salta de slot en slot. */
+.segmento-tres { grid-template-columns: repeat(3, 1fr); }
+.segmento-tres .seg-indicador { width: calc((100% - 8px) / 3); }
+.segmento-tres .seg-indicador.medio { transform: translateX(100%); background: var(--relleno-sale); }
+.segmento-tres .seg-indicador.ultimo { transform: translateX(200%); background: var(--relleno-neutro); }
+
 /* ---------- Campos ---------- */
 form { display: flex; flex-direction: column; gap: var(--hueco); }
 
@@ -535,7 +563,35 @@ form { display: flex; flex-direction: column; gap: var(--hueco); }
   font-size: 0.75rem;
 }
 
-input, textarea {
+/* Todos los campos miden lo mismo, los escriba quien los escriba.
+   Sin esto, el de fecha sale más alto que los demás: el navegador le
+   mete dentro su propio icono de calendario, y en iOS directamente
+   usa un control nativo con sus medidas. */
+input, select {
+  min-height: var(--alto-campo);
+}
+
+input[type="date"] {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* En iOS el valor de la fecha va centrado por omisión y descuadra. */
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  /* El icono no debe empujar la altura de la caja. */
+  height: 1em;
+  margin: 0;
+  cursor: pointer;
+  opacity: .6;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+input, select, textarea {
   width: 100%;
   background: var(--campo-fondo);
   border: 1px solid var(--borde-fuerte);
@@ -546,7 +602,7 @@ input, textarea {
   transition: border-color .2s var(--curva), box-shadow .2s var(--curva);
 }
 
-input:focus, textarea:focus {
+input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--acento);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--acento) 16%, transparent);
@@ -574,6 +630,9 @@ textarea { resize: vertical; }
 }
 .monto-caja input {
   padding-left: 1.75rem;
+  /* La fuente es mayor que la del resto; sin relleno vertical, la caja
+     mantiene la altura común y el texto se centra solo. */
+  padding-block: 0;
   font-size: clamp(1.05rem, 0.95rem + 0.5vw, 1.3rem);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -586,9 +645,15 @@ textarea { resize: vertical; }
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows .38s var(--curva), opacity .28s var(--curva);
+  margin-top: 0;
+  transition: grid-template-rows .38s var(--curva), opacity .28s var(--curva),
+              margin-top .38s var(--curva);
 }
 .desplegable.abierto { grid-template-rows: 1fr; opacity: 1; }
+
+/* Aunque mida cero, el formulario sigue poniendo separación a sus dos
+   lados. Este margen negativo cancela justo esa separación de más. */
+.desplegable:not(.abierto) { margin-top: calc(-1 * var(--hueco)); }
 
 .desplegable-interior {
   overflow: hidden;
@@ -623,6 +688,90 @@ textarea { resize: vertical; }
   border-color: var(--ficha-fondo);
   color: var(--ficha-texto);
 }
+
+/* ---------- Cuentas de dinero ---------- */
+.pista {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--tinta-3);
+  line-height: 1.45;
+}
+
+.form-cuenta {
+  gap: var(--hueco);
+  padding: var(--hueco);
+  margin-bottom: var(--hueco);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  background: var(--superficie-2);
+}
+
+.linea-cuenta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  gap: var(--hueco);
+}
+
+.botones-cuenta { display: flex; align-items: center; gap: 0.5rem; }
+.botones-cuenta .boton-accion { width: auto; flex: 1; }
+
+/* Traspasos: de una cuenta a otra */
+.linea-traspaso {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 0.6rem;
+}
+
+.flecha-traspaso {
+  padding-bottom: 0.7rem;
+  color: var(--neutro-texto);
+  font-size: 1.1rem;
+}
+
+@media (max-width: 460px) {
+  /* En vertical la flecha apunta hacia abajo. */
+  .linea-traspaso { grid-template-columns: 1fr; }
+  .flecha-traspaso { padding: 0; text-align: center; transform: rotate(90deg); }
+}
+
+/* Saldo de cada cuenta, en la lista de la tarjeta */
+.cuenta-fila { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.cuenta-encabezado {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.87rem;
+}
+
+.cuenta-nombre {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 550;
+  min-width: 0;
+}
+.cuenta-nombre span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cuenta-derecha { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
+
+.cuenta-saldo { font-variant-numeric: tabular-nums; font-weight: 600; }
+.cuenta-saldo.negativo { color: var(--sale-texto); }
+
+/* El aviso de movimientos sin cuenta asignada */
+.aviso-asignar {
+  margin-top: var(--hueco);
+  padding: 0.8rem 0.9rem;
+  border-radius: var(--radio-chico);
+  background: color-mix(in srgb, var(--acento) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--acento) 30%, transparent);
+}
+.aviso-asignar p { margin: 0 0 0.6rem; font-size: 0.85rem; }
+
+.linea-asignar { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.linea-asignar select { flex: 1; min-width: 9rem; width: auto; }
 
 /* ---------- Grafica de barras ---------- */
 .grafica { display: flex; flex-direction: column; gap: clamp(0.7rem, 1.4vw, 1.05rem); }
@@ -762,6 +911,8 @@ textarea { resize: vertical; }
 .mov-monto { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .movimiento.ingreso .mov-monto { color: var(--entra-texto); }
 .movimiento.gasto .mov-monto { color: var(--sale-texto); }
+/* Un traspaso no cambia cuánto tienes: su monto no va ni en verde ni en rojo. */
+.movimiento.transferencia .mov-monto { color: var(--neutro-texto); }
 
 .mov-acciones {
   display: flex;
@@ -853,8 +1004,11 @@ textarea { resize: vertical; }
 
   .boton-suave, .boton-texto { padding-inline: 0.7rem; }
 
-  /* El selector de mes manda renglón propio y se ve completo. */
+  /* Los selectores ocupan el ancho en vez de quedar flotando a la
+     derecha: se ven mejor y son más fáciles de tocar. */
   .cabecera-fila { flex-direction: column; align-items: stretch; }
+  .selectores { width: 100%; }
+  .selector-mes { flex: 1 1 11rem; }   /* si no caben los dos, se apilan */
   .selector-mes select { width: 100%; min-width: 0; }
 
   .cabecera { padding-top: clamp(0.5rem, 2vw, 1rem); }
