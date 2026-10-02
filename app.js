@@ -1420,9 +1420,58 @@ function exportarCSV() {
   URL.revokeObjectURL(url);
 }
 
+/* ---------- Instalación como app ----------
+   El service worker es lo que permite abrir sin conexión. Si hay una
+   versión nueva esperando, se avisa en vez de cambiarla por sorpresa:
+   cambiarla en caliente podría recargar la página con algo a medio
+   capturar. */
+function prepararServicio() {
+  if (!('serviceWorker' in navigator)) return;
+
+  // En modo de prueba no se registra: guardaría una versión y
+  // estorbaría justo cuando se está probando un cambio.
+  if (new URLSearchParams(location.search).has('local')) return;
+
+  navigator.serviceWorker.register('sw.js').then((registro) => {
+    const avisar = (esperando) => {
+      if (!esperando) return;
+      $('avisoVersion').hidden = false;
+      $('btnActualizar').onclick = () => {
+        esperando.postMessage('ACTUALIZAR');
+      };
+      // Se puede posponer: el aviso flota sobre la página y no debe
+      // estorbar si justo estabas capturando algo.
+      $('btnCerrarAviso').onclick = () => { $('avisoVersion').hidden = true; };
+    };
+
+    avisar(registro.waiting);
+
+    registro.addEventListener('updatefound', () => {
+      const nuevo = registro.installing;
+      if (!nuevo) return;
+      nuevo.addEventListener('statechange', () => {
+        // "installed" con un controlador ya activo significa que hay
+        // una versión nueva lista, no la primera instalación.
+        if (nuevo.state === 'installed' && navigator.serviceWorker.controller) {
+          avisar(nuevo);
+        }
+      });
+    });
+  }).catch(() => { /* sin service worker la app funciona igual, solo que sin modo sin conexión */ });
+
+  // Cuando el service worker nuevo toma el control, se recarga una vez.
+  let recargando = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (recargando) return;
+    recargando = true;
+    location.reload();
+  });
+}
+
 /* ---------- Punto de entrada ---------- */
 async function arrancar() {
   prepararTema();
+  prepararServicio();
 
   document.querySelectorAll('[data-modo]').forEach((b) => {
     b.addEventListener('click', () => cambiarModoAcceso(b.dataset.modo));

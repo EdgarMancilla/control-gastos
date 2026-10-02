@@ -291,10 +291,35 @@ button { font: inherit; cursor: pointer; }
   /* El ancho util crece con la ventana en vez de toparse de golpe. */
   width: min(100% - 2 * var(--respiro), 1180px);
   margin-inline: auto;
-  padding-block: var(--respiro) calc(var(--respiro) * 2.5);
+  /* El espacio de abajo respeta el indicador de inicio del iPhone,
+     para que la última tarjeta no quede debajo de él. */
+  padding-block: var(--respiro)
+    calc(var(--respiro) * 2.5 + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: var(--respiro);
+}
+
+/* ---------- Aviso de versión nueva ---------- */
+.aviso-version {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Por encima del indicador de inicio del iPhone. */
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  z-index: 50;
+
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  padding: 0.6rem 0.6rem 0.6rem 1rem;
+  border-radius: 999px;
+  background: var(--superficie);
+  border: 1px solid var(--borde-fuerte);
+  box-shadow: var(--sombra);
+  font-size: 0.86rem;
 }
 
 /* ---------- Pantalla de acceso ---------- */

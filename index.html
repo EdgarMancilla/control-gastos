@@ -7,8 +7,14 @@
   <title>Control de gastos</title>
 
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <!-- Para cuando se agrega a la pantalla de inicio del celular -->
+
+  <!-- Instalable como app: en iPhone con Compartir → Añadir a inicio -->
+  <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icono-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gastos">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="mobile-web-app-capable" content="yes">
 
   <!-- Color de la barra del navegador en el móvil, a juego con el tema -->
   <meta name="theme-color" content="#f4f3ef" media="(prefers-color-scheme: light)">
@@ -104,6 +110,13 @@
       </p>
     </div>
   </section>
+
+  <!-- Aparece cuando hay una versión nueva lista para usarse -->
+  <div id="avisoVersion" class="aviso-version" hidden>
+    <span>Hay una versión nueva de la app.</span>
+    <button type="button" id="btnActualizar" class="boton-suave">Actualizar</button>
+    <button type="button" id="btnCerrarAviso" class="mov-accion" aria-label="Cerrar aviso">✕</button>
+  </div>
 
   <main class="lienzo" id="app" hidden>
 

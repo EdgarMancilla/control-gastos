@@ -47,6 +47,45 @@ que rehacerlo o mover el proyecto a otra cuenta.
 
 ---
 
+## Instalarla como app en el celular
+
+La página es una **PWA**: se instala en el teléfono como una app más, sin pasar por
+ninguna tienda y sin costo.
+
+### En iPhone
+
+1. Abre `https://edgarmancilla.github.io/control-gastos/` **en Safari**
+   (desde Chrome no aparece la opción).
+2. Botón **Compartir** (el cuadro con la flecha hacia arriba).
+3. **Añadir a pantalla de inicio** → **Añadir**.
+
+Queda con el icono del billete y el nombre «Gastos». Al abrirla va a pantalla completa,
+sin barra de direcciones.
+
+### En Android
+
+Chrome ofrece solo **«Instalar aplicación»** en el menú de tres puntos, o muestra un
+aviso para instalarla.
+
+### Qué cambia al instalarla
+
+- Abre **sin conexión**: la app carga igual y Firestore sincroniza cuando vuelve
+  la señal. Lo que captures sin internet se envía solo al reconectar.
+- Aparece en el selector de apps, con su icono y nombre propios.
+
+### Cuando publiques una versión nueva
+
+Quienes la tengan instalada verán un aviso **«Hay una versión nueva de la app»** con un
+botón para actualizar. Pueden posponerlo con la ✕.
+
+Si cambias archivos, **sube el número de `VERSION` en `sw.js`** (de `v1` a `v2`, etc.)
+para que las copias guardadas viejas se borren.
+
+> El HTML siempre se pide a la red primero, así que nunca te quedas atrapado con una
+> versión antigua aunque olvides subir el número.
+
+---
+
 ## Probar sin tocar Firebase
 
 Tres formas, de la más rápida a la más completa.
@@ -259,6 +298,9 @@ Cada `git push` a `main` republica el sitio automáticamente, en un par de minut
 | `firestore.rules` | Las reglas de seguridad que se pegan en la consola |
 | `importar.html` | Sube a Firebase los movimientos guardados en el navegador |
 | `diagnostico.html` | Dice qué parte de la configuración ya funciona |
+| `manifest.json` | Hace que se pueda instalar como app en el celular |
+| `sw.js` | Permite abrir sin conexión y avisa de versiones nuevas |
+| `favicon.svg`, `icono-*.png` | El icono del billete, en sus distintos tamaños |
 | `pruebas/` | Las pruebas automáticas que corren con npm test |
 | `servidor.js` | Servidor local para ver la app mientras trabajas |
 | `package.json` | Dependencias de desarrollo y los comandos npm |
