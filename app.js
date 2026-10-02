@@ -1432,11 +1432,17 @@ function prepararServicio() {
   // estorbaría justo cuando se está probando un cambio.
   if (new URLSearchParams(location.search).has('local')) return;
 
+  // Solo se recarga si el usuario pidió actualizar. En la primera
+  // visita el service worker también toma el control, y sin esta
+  // bandera la página se recargaba sola nada más entrar.
+  let pidioActualizar = false;
+
   navigator.serviceWorker.register('sw.js').then((registro) => {
     const avisar = (esperando) => {
       if (!esperando) return;
       $('avisoVersion').hidden = false;
       $('btnActualizar').onclick = () => {
+        pidioActualizar = true;
         esperando.postMessage('ACTUALIZAR');
       };
       // Se puede posponer: el aviso flota sobre la página y no debe
@@ -1459,10 +1465,11 @@ function prepararServicio() {
     });
   }).catch(() => { /* sin service worker la app funciona igual, solo que sin modo sin conexión */ });
 
-  // Cuando el service worker nuevo toma el control, se recarga una vez.
+  // Al tomar el control el service worker nuevo, se recarga una sola
+  // vez para que la página pase a usar la versión recién instalada.
   let recargando = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (recargando) return;
+    if (!pidioActualizar || recargando) return;
     recargando = true;
     location.reload();
   });

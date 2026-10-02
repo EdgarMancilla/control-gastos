@@ -113,7 +113,7 @@ npm install     (solo la primera vez)
 npm test
 ```
 
-Corren **82 comprobaciones** sin internet, sin Firebase y sin navegador: cargan la
+Corren **103 comprobaciones** sin internet, sin Firebase y sin navegador: cargan la
 página real en un DOM simulado y la usan como lo haría una persona. Tardan unos
 segundos.
 
@@ -124,6 +124,7 @@ Lo que cubren:
 | `pruebas/01-acceso.js` | Validaciones, que la contraseña no se guarde en claro, rechazo de credenciales malas, aislamiento entre cuentas, sesión persistente |
 | `pruebas/02-movimientos.js` | Editar sin duplicar, cambiar una salida a entrada, filtro por mes afectando a totales, gráfica e historial |
 | `pruebas/03-cuentas.js` | Saldos con saldo inicial, traspasos que no alteran el total, filtro por cuenta, borrar cuentas sin perder movimientos |
+| `pruebas/04-service-worker.js` | Que la app sea instalable y que el service worker NO toque el tráfico de Firebase |
 
 Para correr una sola: `node pruebas/01-acceso.js`.
 

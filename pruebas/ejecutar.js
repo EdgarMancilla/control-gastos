@@ -12,6 +12,7 @@ const BATERIAS = [
   ['01-acceso.js', 'Cuentas de usuario e inicio de sesión'],
   ['02-movimientos.js', 'Edición de movimientos y filtro por mes'],
   ['03-cuentas.js', 'Cuentas de dinero, traspasos y saldos'],
+  ['04-service-worker.js', 'App instalable y respeto al tráfico de Firebase'],
 ];
 
 let fallaron = 0;
